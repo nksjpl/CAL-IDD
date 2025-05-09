@@ -14,637 +14,219 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""></script>
     <style>
-        body {
-            font-family: 'Inter', sans-serif; /* Using Inter font as a Tailwind default */
-            background-color: #f3f4f6; /* Light gray background */
-        }
-        .filter-select {
-            min-width: 150px;
-        }
-        .summary-card {
-            background-color: white;
-            border-radius: 0.5rem; /* rounded-lg */
-            padding: 1.5rem; /* p-6 */
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-md */
-        }
-        .table-container {
-            max-height: 400px; /* Or any desired height */
-            overflow-y: auto;
-        }
-        /* Custom scrollbar for better aesthetics (optional) */
-        .table-container::-webkit-scrollbar {
-            width: 8px;
-        }
-        .table-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-        .table-container::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 10px;
-        }
-        .table-container::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-        /* Ensure chart is responsive */
-        .chart-container {
-            position: relative;
-            height: 400px; /* Consistent height for charts */
-        }
-        #map-container { /* Ensure map container has a defined height */
-            height: 400px; /* Or match your h-96 Tailwind class if preferred */
-            width: 100%;
-        }
-
-        @media (max-width: 768px) { /* Mobile responsiveness */
-            .filters-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr)); /* 2 columns on mobile */
-            }
-            .summary-grid {
-                grid-template-columns: repeat(1, minmax(0, 1fr)); /* 1 column on mobile */
-            }
-        }
+        /* Your custom styles here */
+        .summary-card { padding: 1rem; background: white; border-radius: 0.5rem; box-shadow: 0 0 1rem rgba(0,0,0,0.1); }
+        .chart-container { position: relative; height: 400px; width: 100%; }
+        #map-container { height: 400px; width: 100%; }
     </style>
+    <title>California IDD Dashboard</title>
 </head>
-<body class="bg-gray-100 p-4 md:p-8">
+<body class="bg-gray-100 p-6">
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-800">California IDD Dashboard</h1>
+        <p class="text-gray-600">Interactive visualization of Infectious Disease Data (2001-2023)</p>
+    </header>
 
-    <div class="container mx-auto">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">California Infectious Disease Dashboard</h1>
-            <p class="text-gray-600">Data from 2001-2023 (Provisional)</p>
-        </header>
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div>
+            <label for="disease-filter" class="block text-sm font-medium text-gray-700">Disease</label>
+            <select id="disease-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
+                <option value="">All Diseases</option>
+            </select>
+        </div>
+        <div>
+            <label for="county-filter" class="block text-sm font-medium text-gray-700">County</label>
+            <select id="county-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
+                <option value="">All Counties</option>
+            </select>
+        </div>
+        <div>
+            <label for="year-filter" class="block text-sm font-medium text-gray-700">Year</label>
+            <select id="year-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
+                <option value="">All Years</option>
+            </select>
+        </div>
+        <div>
+            <label for="sex-filter" class="block text-sm font-medium text-gray-700">Sex</label>
+            <select id="sex-filter" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
+                <option value="">All</option>
+                <!-- Options will be populated by JavaScript if needed, or can be static -->
+            </select>
+        </div>
+    </section>
 
-        <section id="filters" class="mb-8 p-6 bg-white rounded-lg shadow-lg">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">Filters</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end filters-grid">
-                <div>
-                    <label for="disease-filter" class="block text-sm font-medium text-gray-700">Disease</label>
-                    <select id="disease-filter" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
-                        <option value="">All Diseases</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="county-filter" class="block text-sm font-medium text-gray-700">County</label>
-                    <select id="county-filter" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
-                        <option value="">All Counties</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="year-filter" class="block text-sm font-medium text-gray-700">Year</label>
-                    <select id="year-filter" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
-                        <option value="">All Years</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="sex-filter" class="block text-sm font-medium text-gray-700">Sex</label>
-                    <select id="sex-filter" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 filter-select">
-                        <option value="">All</option>
-                        {/* Options will be populated by JavaScript if needed, or can be static */}
-                    </select>
-                </div>
-                <button id="clear-filters-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow-sm transition duration-150 ease-in-out">
-                    Clear Filters
-                </button>
-            </div>
-        </section>
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="summary-card text-center">
+            <h3 class="text-lg font-medium text-gray-500">Total Cases</h3>
+            <p id="total-cases" class="text-3xl font-bold text-indigo-600">0</p>
+        </div>
+        <div class="summary-card text-center">
+            <h3 class="text-lg font-medium text-gray-500">First Reported</h3>
+            <p id="first-reported" class="text-3xl font-bold text-indigo-600">N/A</p>
+        </div>
+        <div class="summary-card text-center">
+            <h3 class="text-lg font-medium text-gray-500">Last Reported</h3>
+            <p id="last-reported" class="text-3xl font-bold text-indigo-600">N/A</p>
+        </div>
+    </section>
 
-        <section id="summary-stats" class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4 summary-grid">
-            <div class="summary-card text-center">
-                <h3 class="text-lg font-medium text-gray-500">Total Cases</h3>
-                <p id="total-cases" class="text-3xl font-bold text-indigo-600">0</p>
-            </div>
-            <div class="summary-card text-center">
-                <h3 class="text-lg font-medium text-gray-500">First Reported</h3>
-                <p id="first-reported" class="text-3xl font-bold text-indigo-600">N/A</p>
-            </div>
-            <div class="summary-card text-center">
-                <h3 class="text-lg font-medium text-gray-500">Last Reported</h3>
-                <p id="last-reported" class="text-3xl font-bold text-indigo-600">N/A</p>
-            </div>
-        </section>
-
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Bar Chart Visualization -->
-            <div class="bg-white p-6 rounded-lg shadow-lg">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Filtered Data (Bar Chart)</h2>
-                <div class="chart-container">
-                    <canvas id="barChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Map Visualization -->
-            <div class="bg-white p-6 rounded-lg shadow-lg">
-                <h2 class="text-xl font-semibold text-gray-700 mb-4">Cases by County</h2>
-                <div id="map-container" class="h-96 w-full border border-gray-200 rounded-md">
-                    <!-- Map will be initialized here by Leaflet -->
-                </div>
-            </div>
-        </section>
-
-        <section class="bg-white p-6 rounded-lg shadow-lg mt-8">
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">Cases Over Time</h2>
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Bar Chart Visualization -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Filtered Data (Bar Chart)</h2>
             <div class="chart-container">
-                <canvas id="lineChart"></canvas>
+                <canvas id="barChart"></canvas>
             </div>
-        </section>
+        </div>
 
-        <footer class="mt-12 text-center text-sm text-gray-500">
-            <p>Data Source: `idb_2001-2023.json` (California Department of Public Health - Provisional).</p>
-            <p>Ensure data accuracy.</p>
-        </footer>
-    </div>
+        <!-- Map Visualization -->
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Cases by County</h2>
+            <div id="map-container" class="h-96 w-full border border-gray-200 rounded-md"></div>
+        </div>
+    </section>
+
+    <section class="bg-white p-6 rounded-lg shadow-lg mt-8">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">Cases Over Time</h2>
+        <div class="chart-container">
+            <canvas id="timeChart"></canvas>
+        </div>
+    </section>
 
     <script>
-        // --- DATA LOADING ---
-        let masterData = []; // This will hold data fetched from 'idb_2001-2023.json'
-
-        const diseaseFilter = document.getElementById('disease-filter');
-        const countyFilter = document.getElementById('county-filter');
-        const yearFilter = document.getElementById('year-filter');
-        const sexFilter = document.getElementById('sex-filter');
-        const clearFiltersBtn = document.getElementById('clear-filters-btn');
-
-        const totalCasesEl = document.getElementById('total-cases');
-        const firstReportedEl = document.getElementById('first-reported');
-        const lastReportedEl = document.getElementById('last-reported');
-        // const dataTableBody = document.getElementById('data-table-body'); // Removed: Table no longer exists
-        // const chartCanvas = document.getElementById('casesChart'); // Removed: Using barChartCanvas for the main bar chart
-        // let casesChart = null; // Removed: Associated with the removed chartCanvas
-
-        // --- INITIALIZE ---
+        // Main dashboard initialization
         async function initializeDashboard() {
             try {
                 // Fetch data from the JSON file
-                // Ensure 'idb_2001-2023.json' is in the same directory as index.html, or provide the correct path.
-                const response = await fetch('idb_2001-2023.json');
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
-                }
-                masterData = await response.json();
-
-                if (!Array.isArray(masterData) || masterData.length === 0) {
-                    // dataTableBody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-gray-500">No data found in `idb_2001-2023.json` or the file is empty.</td></tr>'; // Removed
-                    console.warn("Master data is empty or not an array. Check 'idb_2001-2023.json'.");
-                    // Charts will display their own "no data" messages
+                const response = await fetch('./idb_2001-2023.json');
+                if (!response.ok) throw new Error('Failed to fetch idb_2001-2023.json');
+                const masterData = await response.json();
+                if (!Array.isArray(masterData)) {
+                    console.warn("Master data is empty or not an array. Check './idb_2001-2023.json'.");
                     return;
                 }
 
-                populateFilters();
-                applyFilters(); // This will also update summary and charts
-                // initializeMap will be called after data is fetched and filters are populated
-            await initializeMap(); // Initialize the map after data is ready for filters
-                addEventListeners();
+                // Populate filters
+                populateFilters(masterData);
+                applyFilters(masterData);
+
+                // Initialize the map after data is ready
+                await initializeMap(masterData);
+
+                // Attach event listeners
+                addEventListeners(masterData);
             } catch (error) {
                 console.error("Error initializing dashboard:", error);
-                // dataTableBody.innerHTML = `<tr><td colspan="6" class="text-center p-4 text-gray-500">Error loading dashboard data: ${error.message}. Check console for details.</td></tr>`; // Removed
-                totalCasesEl.textContent = 'Error';
-                firstReportedEl.textContent = 'Error';
-                lastReportedEl.textContent = 'Error';
+                document.getElementById('total-cases').textContent = 'Error';
             }
         }
 
-        // --- POPULATE FILTERS ---
-        function populateFilters() {
-            // Clear existing options except the default "All" option
-            diseaseFilter.innerHTML = '<option value="">All Diseases</option>';
-            yearFilter.innerHTML = '<option value="">All Years</option>';
-            sexFilter.innerHTML = '<option value="">All</option>';
-            // County filter will be populated by initializeMap after GeoJSON is loaded
+        function populateFilters(data) {
+            const diseaseFilter = document.getElementById('disease-filter');
+            const countyFilter = document.getElementById('county-filter');
+            const yearFilter = document.getElementById('year-filter');
+            const sexFilter = document.getElementById('sex-filter');
 
-
-            const diseases = [...new Set(masterData.map(item => item.Disease))].sort();
-            const counties = [...new Set(masterData.map(item => item.County))].sort();
-            const years = [...new Set(masterData.map(item => item.Year))].sort((a,b) => b-a); // Descending years
-            const sexes = [...new Set(masterData.map(item => item.Sex))].sort();
-
-
-            diseases.forEach(d => {
-                if(d) { // Ensure not null or empty
-                    const option = document.createElement('option');
-                    option.value = d;
-                    option.textContent = d;
-                    diseaseFilter.appendChild(option);
-                }
-            });
-            // County filter options are now populated from GeoJSON in initializeMap
-            // to ensure consistency between filter and map.
-            // However, if you want to populate it from masterData as a fallback or primary:
-            // counties.forEach(c => {
-            //      if(c) {
-            //         const option = document.createElement('option');
-            //         option.value = c;
-            //         option.textContent = c;
-            //         countyFilter.appendChild(option);
-            //     }
-            // });
-            years.forEach(y => {
-                if(y) {
-                    const option = document.createElement('option');
-                    option.value = y;
-                    option.textContent = y;
-                    yearFilter.appendChild(option);
-                }
-            });
-             sexes.forEach(s => {
-                if(s) {
-                    const option = document.createElement('option');
-                    option.value = s;
-                    option.textContent = s;
-                    sexFilter.appendChild(option);
-                }
-            });
-        }
-
-        // --- EVENT LISTENERS ---
-        function addEventListeners() {
-            diseaseFilter.addEventListener('change', applyFilters);
-            countyFilter.addEventListener('change', applyFilters);
-            yearFilter.addEventListener('change', applyFilters);
-            sexFilter.addEventListener('change', applyFilters);
-            clearFiltersBtn.addEventListener('click', () => {
-                diseaseFilter.value = "";
-                countyFilter.value = "";
-                yearFilter.value = "";
-                sexFilter.value = "";
-                applyFilters();
-            });
-        }
-
-        // --- APPLY FILTERS AND UPDATE DISPLAY ---
-        function applyFilters() {
-            const selectedDisease = diseaseFilter.value;
-            const selectedCounty = countyFilter.value;
-            const selectedYear = yearFilter.value; // This will be a string from the select
-            const selectedSex = sexFilter.value;
-
-            const filteredData = masterData.filter(item => {
-                // Ensure year comparison is correct (string from filter vs number in data)
-                return (selectedDisease ? item.Disease === selectedDisease : true) &&
-                       (selectedCounty ? item.County === selectedCounty : true) &&
-                       (selectedYear ? item.Year == selectedYear : true) && // Use == for loose comparison if types might differ
-                       (selectedSex ? item.Sex === selectedSex : true);
+            // Helper to create options
+            const createOptions = (set) => Array.from(set).sort().map(value => {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = value;
+                return opt;
             });
 
-            // updateDataTable(filteredData); // Removed: Table is replaced by bar chart
-            updateSummaryStats(filteredData);
-            // updateChart(filteredData); // Removed: Replaced by updateBarChart logic
-            updateBarChart(filteredData); // Update bar chart with filtered data
-            updateLineChart(filteredData); // Update line chart with filtered data
-        updateMapVisualization(selectedCounty); // Update map with selected county
+            // Data domains
+            const diseases = new Set(data.map(item => item.Disease));
+            const counties = new Set(data.map(item => item.County));
+            const years = new Set(data.map(item => item.Year));
+            const sexes = new Set(data.map(item => item.Sex));
+
+            // Populate
+            createOptions(diseases).forEach(opt => diseaseFilter.appendChild(opt));
+            createOptions(counties).forEach(opt => countyFilter.appendChild(opt));
+            createOptions(years).forEach(opt => yearFilter.appendChild(opt));
+            createOptions(sexes).forEach(opt => sexFilter.appendChild(opt));
         }
 
-        // --- UPDATE SUMMARY STATISTICS ---
-        function updateSummaryStats(data) {
-            const totalCases = data.reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
+        function applyFilters(data) {
+            const disease = document.getElementById('disease-filter').value;
+            const county = document.getElementById('county-filter').value;
+            const year = document.getElementById('year-filter').value;
+            const sex = document.getElementById('sex-filter').value;
 
-            let firstReportedYear = 'N/A';
-            let lastReportedYear = 'N/A';
+            let filtered = data;
+            if (disease) filtered = filtered.filter(d => d.Disease === disease);
+            if (county) filtered = filtered.filter(d => d.County === county);
+            if (year) filtered = filtered.filter(d => String(d.Year) === year);
+            if (sex) filtered = filtered.filter(d => d.Sex === sex);
 
-            if (data.length > 0) {
-                const yearsInData = data.map(item => Number(item.Year)).filter(year => !isNaN(year));
-                if (yearsInData.length > 0) {
-                    firstReportedYear = Math.min(...yearsInData).toString();
-                    lastReportedYear = Math.max(...yearsInData).toString();
-                }
-            }
-
-            totalCasesEl.textContent = totalCases.toLocaleString();
-            firstReportedEl.textContent = firstReportedYear;
-            lastReportedEl.textContent = lastReportedYear;
+            updateSummary(filtered);
+            updateBarChart(filtered);
+            updateTimeChart(filtered);
         }
 
-        // --- BAR CHART FOR FILTERED DATA ---
-        const barChartCanvas = document.getElementById('barChart');
-        let barChart = null;
-
-        function updateBarChart(data) {
-            if (barChart) {
-                barChart.destroy();
-            }
-
-            if (!barChartCanvas) {
-                console.error("Bar chart canvas ('barChart') not found!");
-                return;
-            }
-
-            if (data.length === 0) {
-                const ctx = barChartCanvas.getContext('2d');
-                ctx.clearRect(0, 0, barChartCanvas.width, barChartCanvas.height);
-                ctx.font = "16px 'Inter', sans-serif";
-                ctx.fillStyle = "#6b7280"; // text-gray-500
-                ctx.textAlign = 'center';
-                ctx.fillText('No data to display for chart with current filters.', barChartCanvas.width / 2, barChartCanvas.height / 2);
-                return;
-            }
-
-            const selectedDisease = diseaseFilter.value;
-            const selectedCounty = countyFilter.value;
-            const selectedYear = yearFilter.value;
-            const selectedSex = sexFilter.value;
-
-            const casesByCategory = {};
-            data.forEach(item => {
-                const category = selectedYear ? item.County : item.Year; // Group by County if Year is selected, otherwise by Year
-                if (!casesByCategory[category]) casesByCategory[category] = 0;
-                casesByCategory[category] += (Number(item.Cases) || 0);
-            });
-
-            const categories = Object.keys(casesByCategory).sort();
-            const chartData = {
-                labels: categories,
-                datasets: [{
-                    label: 'Cases',
-                    data: categories.map(category => casesByCategory[category]),
-                    backgroundColor: 'rgba(59, 130, 246, 0.7)', // Tailwind blue-500
-                    borderColor: 'rgba(59, 130, 246, 1)',
-                    borderWidth: 1
-                }]
-            };
-
-            const chartOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: true, position: 'top' },
-                    title: {
-                        display: true,
-                        text: `Cases ${selectedDisease ? 'for ' + selectedDisease : ''} ${selectedCounty ? 'in ' + selectedCounty : ''} ${selectedYear ? 'for ' + selectedYear : ''}`
-                    }
-                },
-                scales: {
-                    x: { title: { display: true, text: selectedYear ? 'County' : 'Year' } },
-                    y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true }
-                }
-            };
-
-            barChart = new Chart(barChartCanvas, {
-                type: 'bar',
-                data: chartData,
-                options: chartOptions
-            });
-        }
-
-    // --- MAP VISUALIZATION ---
-    let map = null;
-    let geojsonLayer = null;
-    let californiaGeoJsonData = null; // To store the loaded GeoJSON
-
-    // Function to generate a color from a string (e.g., county name)
-    // This is a simple hash-based color generator.
-    function stringToColor(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash);
-            hash = hash & hash; // Convert to 32bit integer
-        }
-        // Construct color, avoiding shades of purple and very dark/light colors
-        let r = (hash & 0xFF0000) >> 16;
-        let g = (hash & 0x00FF00) >> 8;
-        let b = hash & 0x0000FF;
-
-        // If it looks like purple (high R and B, low G), adjust G
-        if (r > 100 && b > 100 && g < 100) {
-            g = (g + 128) % 256; // Increase green component
-        }
-        // Ensure components are reasonably bright and not too pale
-        r = Math.max(40, Math.min(210, r));
-        g = Math.max(40, Math.min(210, g));
-        b = Math.max(40, Math.min(210, b));
-
-        return "#" + ("000000" + ((r << 16) | (g << 8) | b).toString(16)).slice(-6);
-    }
-
-    const BASE_COUNTY_STYLE = { // For border and general opacity
-        color: "#4A5568", // Dark gray border (Tailwind gray-700)
-        weight: 1,
-        opacity: 0.9,
-        fillOpacity: 0.65 // Default fill opacity
-    };
-
-    const HIGHLIGHTED_PURPLE_STYLE = {
-        ...BASE_COUNTY_STYLE, // Inherit base border, weight
-        fillColor: "#805AD5", // Purple color (e.g., Tailwind purple-600)
-        fillOpacity: 0.85,
-        weight: 2.5,
-        color: "#553C9A", // Darker purple border (e.g., Tailwind purple-800)
-    };
-
-    async function initializeMap() {
-        const mapContainer = document.getElementById('map-container');
-        if (!mapContainer) {
-            console.error("Map container not found!");
-            return;
-        }
-        mapContainer.innerHTML = ''; // Clear any placeholder text
-
-        // Define approximate boundaries for California
-        const californiaBounds = [
-            [32.5, -124.5], // Southwest
-            [42, -114.0]    // Northeast
-        ];
-
-        map = L.map('map-container', {
-            center: [37.0, -119.5], // Centered on California
-            zoom: 6,
-            maxBounds: californiaBounds, // Restrict map panning
-            minZoom: 5 // Prevent zooming out too far
-        });
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            maxZoom: 18
-        }).addTo(map);
-
-        try {
-            // IMPORTANT: Ensure 'california-counties.geojson' exists in the same directory
-            // or provide the correct path.
-            const response = await fetch('california-counties.geojson'); 
-            if (!response.ok) {
-                throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}`);
-            }
-            californiaGeoJsonData = await response.json();
-            
-            geojsonLayer = L.geoJson(californiaGeoJsonData, {
-                style: function(feature) {
-                    const countyId = feature.properties.name || 'UnknownCounty'; // Use 'name' from GeoJSON for unique color ID
-                    if (!feature.properties.defaultColor) {
-                        feature.properties.defaultColor = stringToColor(countyId);
-                    }
-                    return {
-                        ...BASE_COUNTY_STYLE,
-                        fillColor: feature.properties.defaultColor
-                    };
-                },
-                onEachFeature: function(feature, layer) {
-                    const countyDisplayName = feature.properties.fullname || feature.properties.name;
-                    // 'name' property from GeoJSON (e.g., "Alameda") should match 'County' in masterData
-                    const countyValueForFiltering = feature.properties.name; 
-
-                    layer.bindTooltip(() => {
-                        const selectedDisease = diseaseFilter.value; // Get current value from the disease dropdown
-                        let tooltipContent = countyDisplayName;
-
-                        if (selectedDisease && masterData.length > 0) {
-                            // Filter masterData for the hovered county and selected disease
-                            const casesInCountyForDisease = masterData
-                                .filter(item => item.County === countyValueForFiltering && item.Disease === selectedDisease)
-                                .reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
-
-                            // Check if the selected disease is a valid one present in the data
-                            // to avoid showing "0 cases" for a non-existent disease scenario.
-                            const isValidDiseaseSelected = masterData.some(d => d.Disease === selectedDisease);
-
-                            if (isValidDiseaseSelected) {
-                                // Format tooltip to include disease and case count
-                                tooltipContent = `${countyDisplayName}<br><b>${selectedDisease}:</b> ${casesInCountyForDisease.toLocaleString()} cases`;
-                            }
-                        }
-                        return tooltipContent; // Return the HTML content for the tooltip
-                    });
-                }
+        async function initializeMap(data) {
+            const map = L.map('map-container').setView([36.7783, -119.4179], 6);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
             }).addTo(map);
 
-            // Populate County Filter Dropdown from GeoJSON data
-            // const countyFilter = document.getElementById('county-filter'); // Already defined globally
-            if (countyFilter) {
-                countyFilter.innerHTML = '<option value="">All Counties</option>'; // Reset with default
-                const countyNamesForDropdown = [];
-                const countySet = new Set(); 
-                californiaGeoJsonData.features.forEach(feature => {
-                    const countyValue = feature.properties.name; 
-                    const countyDisplayText = feature.properties.fullname || feature.properties.name; 
-                    if (countyValue && !countySet.has(countyValue)) {
-                        countySet.add(countyValue);
-                        countyNamesForDropdown.push({ value: countyValue, text: countyDisplayText });
-                    }
-                });
-                countyNamesForDropdown.sort((a, b) => a.text.localeCompare(b.text)); 
-                countyNamesForDropdown.forEach(county => {
-                    const option = document.createElement('option');
-                    option.value = county.value;
-                    option.textContent = county.text;
-                    countyFilter.appendChild(option);
-                });
-            }
+            const geoResponse = await fetch('./california-counties.geojson');
+            if (!geoResponse.ok) throw new Error('Failed to fetch california-counties.geojson');
+            const geoData = await geoResponse.json();
 
-        } catch (error) {
-            console.error("Error loading or processing GeoJSON for map:", error);
-            mapContainer.innerHTML = `<p class=\"text-center text-red-500 p-4\">Could not load map data. Ensure 'california-counties.geojson' is present and valid. Check console for details.</p>`;
+            L.geoJSON(geoData, {
+                style: (feature) => ({ color: '#3b82f6', weight: 1, fillOpacity: 0.2 })
+            }).addTo(map);
         }
-    }
 
-    function updateMapVisualization(selectedCountyName) {
-        if (!geojsonLayer || !map) return;
-
-        let highlightedLayer = null;
-        geojsonLayer.eachLayer(function(layer) {
-            const countyNameProperty = layer.feature.properties.name; // Use 'name' from GeoJSON for matching
-
-            if (countyNameProperty && // Ensure property exists
-                selectedCountyName && // Ensure selectedCountyName is not empty or null
-                countyNameProperty.toLowerCase() === selectedCountyName.toLowerCase()) {
-                layer.setStyle(HIGHLIGHTED_PURPLE_STYLE);
-                highlightedLayer = layer;
-            } else {
-                // Revert to its unique default style
-                layer.setStyle({
-                    ...BASE_COUNTY_STYLE,
-                    fillColor: layer.feature.properties.defaultColor // Use stored default color
-                });
-            }
-        });
-
-        if (highlightedLayer) {
-            map.fitBounds(highlightedLayer.getBounds(), { paddingTopLeft: [50,50], paddingBottomRight: [50,50] }); // Zoom to the highlighted county with padding
-        } else if (!selectedCountyName && californiaGeoJsonData) {
-            // If no county is selected (e.g., "All Counties" or filter cleared), reset view to fit all of California
-            // or a predefined default view if californiaGeoJsonData isn't loaded yet for some reason.
-            if (geojsonLayer && geojsonLayer.getBounds().isValid()) {
-                map.fitBounds(geojsonLayer.getBounds());
-            } else {
-                map.setView([37.0, -119.5], 6); // Fallback reset
-            }
-        }
-    }
-
-        // --- LINE CHART FOR CASES OVER TIME ---
-        const lineChartCanvas = document.getElementById('lineChart');
-        let lineChart = null;
-
-        function updateLineChart(data) {
-            if (lineChart) {
-                lineChart.destroy();
-            }
-
-            if (!lineChartCanvas) {
-                console.error("Line chart canvas ('lineChart') not found!");
-                return;
-            }
-
-            // Check if data has 'Month' property, otherwise group by Year for the line chart
-            const hasMonthData = data.length > 0 && data.some(item => typeof item.Month !== 'undefined' && item.Month !== null && !isNaN(parseInt(item.Month)));
-
-            const casesByTimeKey = {};
-            data.forEach(item => {
-                const year = item.Year;
-                const month = item.Month; // Could be undefined or not a number
-                let timeKey;
-
-                if (hasMonthData && year && month && !isNaN(parseInt(month))) {
-                    timeKey = `${year}-${String(month).padStart(2, '0')}`;
-                } else if (year) {
-                    timeKey = String(year);
-                } else {
-                    return; // Skip if no valid year
-                }
-                
-                if (!casesByTimeKey[timeKey]) casesByTimeKey[timeKey] = 0;
-                casesByTimeKey[timeKey] += (Number(item.Cases) || 0);
+        function addEventListeners(data) {
+            document.querySelectorAll('.filter-select').forEach(el => {
+                el.addEventListener('change', () => applyFilters(data));
             });
+        }
 
-            if (Object.keys(casesByTimeKey).length === 0) {
-                const ctx = lineChartCanvas.getContext('2d');
-                ctx.clearRect(0, 0, lineChartCanvas.width, lineChartCanvas.height);
-                ctx.font = "16px 'Inter', sans-serif";
-                ctx.fillStyle = "#6b7280"; // text-gray-500
-                ctx.textAlign = 'center';
-                ctx.fillText(data.length > 0 ? 'No data for line chart with current filters.' : 'Loading data or no data to display.', lineChartCanvas.width / 2, lineChartCanvas.height / 2);
-                return;
+        function updateSummary(data) {
+            const total = data.reduce((sum, i) => sum + Number(i.Cases || 0), 0);
+            document.getElementById('total-cases').textContent = total;
+            if (data.length) {
+                const dates = data.map(i => new Date(i.Date));
+                document.getElementById('first-reported').textContent = new Date(Math.min(...dates)).toLocaleDateString();
+                document.getElementById('last-reported').textContent = new Date(Math.max(...dates)).toLocaleDateString();
+            } else {
+                document.getElementById('first-reported').textContent = 'N/A';
+                document.getElementById('last-reported').textContent = 'N/A';
             }
+        }
 
-            const timeKeys = Object.keys(casesByTimeKey).sort();
-            const chartData = {
-                labels: timeKeys,
-                datasets: [{
-                    label: 'Cases',
-                    data: timeKeys.map(key => casesByTimeKey[key]),
-                    borderColor: 'rgba(79, 70, 229, 0.7)',
-                    backgroundColor: 'rgba(79, 70, 229, 0.2)',
-                    fill: true
-                }]
-            };
+        function updateBarChart(data) {
+            const ctx = document.getElementById('barChart').getContext('2d');
+            if (window.barChart) window.barChart.destroy();
+            const counts = {};
+            data.forEach(i => counts[i.Disease] = (counts[i.Disease] || 0) + Number(i.Cases || 0));
+            window.barChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: Object.keys(counts), datasets: [{ label: '# of Cases', data: Object.values(counts) }] },
+                options: { scales: { y: { beginAtZero: true } } }
+            });
+        }
 
-            lineChart = new Chart(lineChartCanvas, {
+        function updateTimeChart(data) {
+            const ctx = document.getElementById('timeChart').getContext('2d');
+            if (window.timeChart) window.timeChart.destroy();
+            const grouped = {};
+            data.forEach(i => {
+                const dateKey = new Date(i.Date).getFullYear();
+                grouped[dateKey] = (grouped[dateKey] || 0) + Number(i.Cases || 0);
+            });
+            window.timeChart = new Chart(ctx, {
                 type: 'line',
-                data: chartData,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'Cases Over Time' }
-                    },
-                    scales: {
-                        x: { title: { display: true, text: hasMonthData ? 'Year-Month' : 'Year' } },
-                        y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true }
-                    }
-                }
+                data: { labels: Object.keys(grouped).sort(), datasets: [{ label: 'Cases Over Time', data: Object.values(grouped) }] },
+                options: { scales: { y: { beginAtZero: true } } }
             });
         }
 
-        // --- RUN INITIALIZATION ON PAGE LOAD ---
         document.addEventListener('DOMContentLoaded', initializeDashboard);
-
     </script>
 </body>
 </html>
