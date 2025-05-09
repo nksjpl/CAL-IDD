@@ -172,36 +172,39 @@
         const lastReportedEl = document.getElementById('last-reported');
         
         const barChartCanvas = document.getElementById('barChart');
-        let barChartInstance = null; // Renamed to avoid conflict with canvas id
+        let barChartInstance = null; 
         
         const lineChartCanvas = document.getElementById('lineChart');
-        let lineChartInstance = null; // Renamed
+        let lineChartInstance = null; 
 
         // --- MAP VARIABLES ---
         let map = null;
         let geojsonLayer = null;
         let californiaGeoJsonData = null;
 
+        // --- STATE VARIABLES ---
+        let isApplyingFilters = false; // Guard flag to prevent filter recursion
+
         // --- INITIALIZE DASHBOARD ---
         async function initializeDashboard() {
             try {
-                // GITHUB PAGES NOTE: Ensure 'idb_2001-2023.json' is in the same directory as index.html,
-                // or adjust the path (e.g., 'data/idb_2001-2023.json') if it's in a subdirectory.
                 const response = await fetch('idb_2001-2023.json');
                 if (!response.ok) {
                     throw new Error(`Failed to fetch disease data: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
                 }
                 masterData = await response.json();
 
-                if (!Array.isArray(masterData) || masterData.length === 0) {
-                    console.warn("Disease data is empty or not an array. Check 'idb_2001-2023.json'.");
-                    // Charts and summary will display "No data" or "Error" messages.
-                    // You might want to display a more prominent message to the user here.
+                if (!Array.isArray(masterData)) { // Allow empty masterData, but warn
+                    console.warn("Disease data ('idb_2001-2023.json') is not an array. Dashboard might not function correctly.");
+                    masterData = []; // Ensure masterData is an array to prevent errors later
+                } else if (masterData.length === 0) {
+                    console.warn("Disease data is empty. Check 'idb_2001-2023.json'.");
                 }
 
+
                 populateFilters();
-                await initializeMap(); // Initialize map, which also populates county filter
-                applyFilters(); // Initial data load and display
+                await initializeMap(); 
+                applyFilters(); 
                 addEventListeners();
 
             } catch (error) {
@@ -209,52 +212,43 @@
                 totalCasesEl.textContent = 'Error';
                 firstReportedEl.textContent = 'Error';
                 lastReportedEl.textContent = 'Error';
-                // Display error on charts
-                displayChartError(barChartCanvas, error.message);
-                displayChartError(lineChartCanvas, error.message);
-                 const mapContainer = document.getElementById('map-container');
+                
+                displayChartError(barChartCanvas, `Chart Error: ${error.message}`);
+                displayChartError(lineChartCanvas, `Chart Error: ${error.message}`);
+                const mapContainer = document.getElementById('map-container');
                 if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-red-500 p-4">Error loading dashboard: ${error.message}</p>`;
             }
         }
 
         // --- POPULATE FILTER DROPDOWNS ---
         function populateFilters() {
-            // Clear existing options except the default "All" option
             diseaseFilter.innerHTML = '<option value="">All Diseases</option>';
             yearFilter.innerHTML = '<option value="">All Years</option>';
             sexFilter.innerHTML = '<option value="">All</option>';
-            // County filter is populated in initializeMap after GeoJSON is loaded
 
-            if (masterData.length === 0) return; // Don't populate if no data
+            if (masterData.length === 0) return; 
 
-            const diseases = [...new Set(masterData.map(item => item.Disease))].sort();
-            // Years are sorted numerically, descending
+            const diseases = [...new Set(masterData.map(item => item.Disease))].filter(Boolean).sort();
             const years = [...new Set(masterData.map(item => parseInt(item.Year)))].filter(y => !isNaN(y)).sort((a,b) => b-a);
-            const sexes = [...new Set(masterData.map(item => item.Sex))].sort();
+            const sexes = [...new Set(masterData.map(item => item.Sex))].filter(Boolean).sort();
 
             diseases.forEach(d => {
-                if(d) {
-                    const option = document.createElement('option');
-                    option.value = d;
-                    option.textContent = d;
-                    diseaseFilter.appendChild(option);
-                }
+                const option = document.createElement('option');
+                option.value = d;
+                option.textContent = d;
+                diseaseFilter.appendChild(option);
             });
             years.forEach(y => {
-                if(y) { // Year should be a number here
-                    const option = document.createElement('option');
-                    option.value = y;
-                    option.textContent = y;
-                    yearFilter.appendChild(option);
-                }
+                const option = document.createElement('option');
+                option.value = y;
+                option.textContent = y;
+                yearFilter.appendChild(option);
             });
              sexes.forEach(s => {
-                if(s) {
-                    const option = document.createElement('option');
-                    option.value = s;
-                    option.textContent = s;
-                    sexFilter.appendChild(option);
-                }
+                const option = document.createElement('option');
+                option.value = s;
+                option.textContent = s;
+                sexFilter.appendChild(option);
             });
         }
 
@@ -275,25 +269,38 @@
 
         // --- APPLY FILTERS AND UPDATE DISPLAY ---
         function applyFilters() {
-            const selectedDisease = diseaseFilter.value;
-            const selectedCounty = countyFilter.value;
-            const selectedYearStr = yearFilter.value; // Year from filter is a string
-            const selectedSex = sexFilter.value;
+            // Guard against re-entrant calls to prevent stack overflow
+            if (isApplyingFilters) {
+                console.warn("applyFilters() called while already running. Aborting to prevent recursion.");
+                return; 
+            }
+            isApplyingFilters = true;
 
-            // Convert selectedYearStr to a number for comparison if it's not empty
-            // item.Year in masterData should ideally be a number.
-            const filteredData = masterData.filter(item => {
-                const itemYear = parseInt(item.Year); // Ensure item.Year is treated as a number
-                return (selectedDisease ? item.Disease === selectedDisease : true) &&
-                       (selectedCounty ? item.County === selectedCounty : true) &&
-                       (selectedYearStr ? itemYear === parseInt(selectedYearStr) : true) && // Strict comparison with parsed numbers
-                       (selectedSex ? item.Sex === selectedSex : true);
-            });
+            try {
+                const selectedDisease = diseaseFilter.value;
+                const selectedCounty = countyFilter.value;
+                const selectedYearStr = yearFilter.value; 
+                const selectedSex = sexFilter.value;
 
-            updateSummaryStats(filteredData);
-            updateBarChart(filteredData);
-            updateLineChart(filteredData);
-            updateMapVisualization(selectedCounty); // Pass the string value from the filter
+                const filteredData = masterData.filter(item => {
+                    const itemYear = parseInt(item.Year); 
+                    return (selectedDisease ? item.Disease === selectedDisease : true) &&
+                           (selectedCounty ? item.County === selectedCounty : true) &&
+                           (selectedYearStr ? itemYear === parseInt(selectedYearStr) : true) && 
+                           (selectedSex ? item.Sex === selectedSex : true);
+                });
+
+                updateSummaryStats(filteredData);
+                updateBarChart(filteredData);
+                updateLineChart(filteredData);
+                updateMapVisualization(selectedCounty); 
+            } catch (e) {
+                console.error("Error during applyFilters processing:", e);
+                // Display a generic error or handle as appropriate
+                // For example, you could update a status bar on the UI
+            } finally {
+                isApplyingFilters = false; // Reset the flag
+            }
         }
 
         // --- UPDATE SUMMARY STATISTICS ---
@@ -319,11 +326,30 @@
         function displayChartError(canvas, message) {
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.font = "16px 'Inter', sans-serif";
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous content
+            ctx.font = "14px 'Inter', sans-serif"; // Slightly smaller font for error messages
             ctx.fillStyle = "#ef4444"; // text-red-500
             ctx.textAlign = 'center';
-            ctx.fillText(message || 'Error loading chart data.', canvas.width / 2, canvas.height / 2);
+            // Wrap text if message is too long
+            const maxWidth = canvas.width - 20; // Max width for text
+            const lineHeight = 18;
+            const words = (message || 'Error loading chart data.').split(' ');
+            let line = '';
+            let y = canvas.height / 2 - lineHeight; // Adjust starting y
+
+            for(let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = ctx.measureText(testLine);
+                const testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    ctx.fillText(line, canvas.width / 2, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, canvas.width / 2, y);
         }
 
 
@@ -331,6 +357,7 @@
         function updateBarChart(data) {
             if (barChartInstance) {
                 barChartInstance.destroy();
+                barChartInstance = null; // Ensure old instance is cleared
             }
             if (!barChartCanvas) {
                 console.error("Bar chart canvas ('barChart') not found!");
@@ -341,41 +368,45 @@
             const selectedCounty = countyFilter.value;
             const selectedYearStr = yearFilter.value;
 
-            if (data.length === 0) {
-                const ctx = barChartCanvas.getContext('2d');
-                ctx.clearRect(0, 0, barChartCanvas.width, barChartCanvas.height);
-                ctx.font = "16px 'Inter', sans-serif";
-                ctx.fillStyle = "#6b7280"; // text-gray-500
-                ctx.textAlign = 'center';
-                ctx.fillText('No data for chart with current filters.', barChartCanvas.width / 2, barChartCanvas.height / 2);
+            if (data.length === 0 && masterData.length > 0) { // Only show "no data for filter" if masterData isn't empty
+                displayChartError(barChartCanvas, 'No data for chart with current filters.');
+                return;
+            }
+            if (masterData.length === 0 && data.length === 0){ // If masterData itself is empty
+                 displayChartError(barChartCanvas, 'No data available to display.');
                 return;
             }
 
+
             const casesByCategory = {};
-            // Determine category for grouping: if a year is selected, group by county; otherwise, group by year.
             const groupByKey = selectedYearStr ? 'County' : 'Year';
             
             data.forEach(item => {
                 const categoryValue = item[groupByKey];
-                if (!categoryValue) return; // Skip if category value is undefined/null
+                if (!categoryValue) return; 
                 if (!casesByCategory[categoryValue]) casesByCategory[categoryValue] = 0;
                 casesByCategory[categoryValue] += (Number(item.Cases) || 0);
             });
 
             const categories = Object.keys(casesByCategory).sort((a, b) => {
-                // Numeric sort for years, string sort for counties
                 return groupByKey === 'Year' ? parseInt(a) - parseInt(b) : a.localeCompare(b);
             });
+            
+            if (categories.length === 0 && data.length > 0) { // Data exists but categories couldn't be formed
+                displayChartError(barChartCanvas, 'Could not generate chart categories from data.');
+                return;
+            }
+
 
             const chartData = {
                 labels: categories,
                 datasets: [{
                     label: 'Cases',
                     data: categories.map(category => casesByCategory[category]),
-                    backgroundColor: 'rgba(59, 130, 246, 0.7)', // Tailwind blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.7)', 
                     borderColor: 'rgba(59, 130, 246, 1)',
                     borderWidth: 1,
-                    borderRadius: 5, // Add rounded bars
+                    borderRadius: 5, 
                 }]
             };
 
@@ -386,7 +417,7 @@
                     legend: { display: true, position: 'top' },
                     title: {
                         display: true,
-                        text: `Cases ${selectedDisease ? 'for ' + selectedDisease : ''} ${selectedCounty ? 'in ' + selectedCounty : ''} ${selectedYearStr ? 'for ' + selectedYearStr : ''}`.trim()
+                        text: `Cases ${selectedDisease ? 'for ' + selectedDisease : ''} ${selectedCounty ? 'in ' + selectedCounty : ''} ${selectedYearStr ? 'for ' + selectedYearStr : ''}`.trim() || 'Overall Cases Breakdown'
                     },
                     tooltip: {
                         callbacks: {
@@ -411,21 +442,21 @@
 
     // --- MAP VISUALIZATION ---
     const BASE_COUNTY_STYLE = {
-        color: "#4A5568", // Dark gray border (Tailwind gray-700)
+        color: "#4A5568", 
         weight: 1,
         opacity: 0.9,
         fillOpacity: 0.65
     };
 
-    const HIGHLIGHTED_COUNTY_STYLE = { // Changed from purple to a more neutral highlight
+    const HIGHLIGHTED_COUNTY_STYLE = { 
         ...BASE_COUNTY_STYLE,
-        fillColor: "#3B82F6", // Tailwind blue-500
+        fillColor: "#3B82F6", 
         fillOpacity: 0.85,
         weight: 2.5,
-        color: "#1D4ED8", // Tailwind blue-700
+        color: "#1D4ED8", 
     };
     
-    function stringToColor(str) { // Consistent color generator
+    function stringToColor(str) { 
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             hash = str.charCodeAt(i) + ((hash << 5) - hash);
@@ -434,13 +465,11 @@
         let r = (hash & 0xFF0000) >> 16;
         let g = (hash & 0x00FF00) >> 8;
         let b = hash & 0x0000FF;
-        // Ensure colors are not too dark or too light, and try to avoid very similar shades
-        r = 30 + (r % 195); // Range 30-225
+        r = 30 + (r % 195); 
         g = 30 + (g % 195);
         b = 30 + (b % 195);
-        // Avoid shades too close to the highlight color (blue)
         if (Math.abs(r - 59) < 30 && Math.abs(g - 130) < 30 && Math.abs(b - 246) < 30) {
-            g = (g + 100) % 195 + 30; // Shift green
+            g = (g + 100) % 195 + 30; 
         }
         return "#" + ("000000" + ((r << 16) | (g << 8) | b).toString(16)).slice(-6);
     }
@@ -450,11 +479,17 @@
         const mapContainer = document.getElementById('map-container');
         if (!mapContainer) {
             console.error("Map container not found!");
-            return;
+            return; // Exit if map container doesn't exist
         }
-        mapContainer.innerHTML = ''; // Clear any placeholder
+        // Clear any previous content (like error messages) before initializing
+        mapContainer.innerHTML = ''; 
 
         const californiaBounds = [[32.5, -124.5], [42, -114.0]];
+        // Check if map is already initialized
+        if (map) {
+            map.remove(); // Remove existing map instance if any
+            map = null;
+        }
         map = L.map('map-container', {
             center: [37.0, -119.5], zoom: 6, maxBounds: californiaBounds, minZoom: 5
         });
@@ -465,23 +500,26 @@
         }).addTo(map);
 
         try {
-            // GITHUB PAGES NOTE: Ensure 'california-counties.geojson' is in the same directory as index.html,
-            // or adjust the path (e.g., 'data/california-counties.geojson') if it's in a subdirectory.
             const response = await fetch('california-counties.geojson'); 
             if (!response.ok) {
                 throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
             }
             californiaGeoJsonData = await response.json();
             
-            // Populate County Filter Dropdown from GeoJSON data
+            if (!californiaGeoJsonData || !californiaGeoJsonData.features || californiaGeoJsonData.features.length === 0) {
+                console.warn("GeoJSON data is empty or invalid.");
+                if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-yellow-500 p-4">Map data (GeoJSON) is empty or invalid. Counties cannot be displayed.</p>`;
+                // Do not proceed to create geojsonLayer if data is bad
+                return; 
+            }
+
             if (countyFilter && californiaGeoJsonData && californiaGeoJsonData.features) {
-                countyFilter.innerHTML = '<option value="">All Counties</option>'; // Reset with default
+                countyFilter.innerHTML = '<option value="">All Counties</option>'; 
                 const countyNamesForDropdown = [];
                 const countySet = new Set(); 
                 californiaGeoJsonData.features.forEach(feature => {
-                    // IMPORTANT: Ensure 'feature.properties.name' from GeoJSON matches 'County' field in your idb_2001-2023.json
                     const countyValue = feature.properties.name; 
-                    const countyDisplayText = feature.properties.NAME || feature.properties.name; // Use NAME if available, fallback to name
+                    const countyDisplayText = feature.properties.NAME || feature.properties.name; 
                     if (countyValue && !countySet.has(countyValue)) {
                         countySet.add(countyValue);
                         countyNamesForDropdown.push({ value: countyValue, text: countyDisplayText });
@@ -496,53 +534,66 @@
                 });
             }
 
-
+            if (geojsonLayer) { // If layer exists from a previous init, remove it
+                map.removeLayer(geojsonLayer);
+                geojsonLayer = null;
+            }
             geojsonLayer = L.geoJson(californiaGeoJsonData, {
                 style: function(feature) {
                     const countyId = feature.properties.name || 'UnknownCounty';
-                    if (!feature.properties.defaultColor) { // Store default color
-                        feature.properties.defaultColor = stringToColor(countyId + "salt"); // Add salt for more variation
+                    if (!feature.properties.defaultColor) { 
+                        feature.properties.defaultColor = stringToColor(countyId + "salt"); 
                     }
                     return { ...BASE_COUNTY_STYLE, fillColor: feature.properties.defaultColor };
                 },
                 onEachFeature: function(feature, layer) {
                     const countyDisplayName = feature.properties.NAME || feature.properties.name || "N/A";
-                    const countyValueForFiltering = feature.properties.name; // This MUST match county names in your disease data
+                    const countyValueForFiltering = feature.properties.name; 
 
                     layer.bindTooltip(() => {
                         const selectedDisease = diseaseFilter.value;
                         let tooltipContent = `<b>${countyDisplayName}</b>`;
                         
-                        // GITHUB PAGES NOTE: Data consistency is key.
-                        // Ensure county names in `idb_2001-2023.json` (field: County)
-                        // exactly match `feature.properties.name` in `california-counties.geojson`.
-                        // Example: "Los Angeles" must be identical in both files.
-                        // Discrepancies (e.g. "St. Clara" vs "Santa Clara") will prevent data from showing correctly.
-
                         if (masterData.length > 0 && countyValueForFiltering) {
-                            const casesInCounty = masterData
-                                .filter(item => item.County === countyValueForFiltering && 
-                                               (selectedDisease ? item.Disease === selectedDisease : true))
+                            // Calculate total cases for this county (all diseases, respecting other filters like year/sex if needed)
+                            // For simplicity, this tooltip shows total for county, and then specific for disease if selected.
+                            const currentFilters = { // Get current filter state for accurate tooltip
+                                disease: diseaseFilter.value,
+                                year: yearFilter.value,
+                                sex: sexFilter.value
+                            };
+
+                            const casesInCountyAllDiseases = masterData
+                                .filter(item => item.County === countyValueForFiltering &&
+                                               (currentFilters.year ? parseInt(item.Year) === parseInt(currentFilters.year) : true) &&
+                                               (currentFilters.sex ? item.Sex === currentFilters.sex : true)
+                                )
                                 .reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
                             
-                            tooltipContent += `<br>Total Cases: ${casesInCounty.toLocaleString()}`;
-                            if (selectedDisease) {
-                                 const casesForDisease = masterData
-                                    .filter(item => item.County === countyValueForFiltering && item.Disease === selectedDisease)
+                            tooltipContent += `<br>Total Cases (active filters): ${casesInCountyAllDiseases.toLocaleString()}`;
+
+                            if (selectedDisease) { // If a specific disease is selected in the main filter
+                                 const casesForSelectedDisease = masterData
+                                    .filter(item => item.County === countyValueForFiltering && 
+                                                   item.Disease === selectedDisease &&
+                                                   (currentFilters.year ? parseInt(item.Year) === parseInt(currentFilters.year) : true) &&
+                                                   (currentFilters.sex ? item.Sex === currentFilters.sex : true)
+                                    )
                                     .reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
-                                tooltipContent += `<br>${selectedDisease}: ${casesForDisease.toLocaleString()}`;
+                                tooltipContent += `<br>${selectedDisease}: ${casesForSelectedDisease.toLocaleString()}`;
                             }
                         } else if (!countyValueForFiltering) {
-                            tooltipContent += "<br>County name missing in GeoJSON properties."
+                            tooltipContent += "<br>County name missing in GeoJSON."
+                        } else if (masterData.length === 0) {
+                            tooltipContent += "<br>Disease data not loaded."
                         }
                         return tooltipContent;
                     });
 
                     layer.on('click', function(e) {
-                        // If a county in the map is clicked, update the county filter and re-apply filters
                         if (countyValueForFiltering) {
                             countyFilter.value = countyValueForFiltering;
-                            applyFilters(); // This will also call updateMapVisualization
+                            applyFilters(); 
                         }
                     });
                 }
@@ -559,25 +610,29 @@
 
         let highlightedLayer = null;
         geojsonLayer.eachLayer(function(layer) {
-            const geoJsonCountyName = layer.feature.properties.name; // This is the key used for matching
+            const geoJsonCountyName = layer.feature.properties.name; 
 
             if (geoJsonCountyName && selectedCountyName && geoJsonCountyName.toLowerCase() === selectedCountyName.toLowerCase()) {
                 layer.setStyle(HIGHLIGHTED_COUNTY_STYLE);
                 layer.bringToFront();
                 highlightedLayer = layer;
             } else {
-                layer.setStyle({ ...BASE_COUNTY_STYLE, fillColor: layer.feature.properties.defaultColor });
+                // Ensure defaultColor exists before trying to use it
+                const defaultColor = layer.feature.properties.defaultColor || stringToColor(geoJsonCountyName + "salt" || "defaultSalt");
+                layer.setStyle({ ...BASE_COUNTY_STYLE, fillColor: defaultColor });
             }
         });
 
         if (highlightedLayer) {
             map.fitBounds(highlightedLayer.getBounds(), { paddingTopLeft: [20,20], paddingBottomRight: [20,20], maxZoom: 8 });
-        } else if (!selectedCountyName && californiaGeoJsonData) { // "All Counties" selected or filter cleared
-             if (geojsonLayer && geojsonLayer.getBounds().isValid()) {
+        } else if (!selectedCountyName && californiaGeoJsonData && geojsonLayer.getLayers().length > 0) { 
+             if (geojsonLayer.getBounds().isValid()) {
                 map.fitBounds(geojsonLayer.getBounds());
             } else {
-                map.setView([37.0, -119.5], 6); // Fallback reset
+                map.setView([37.0, -119.5], 6); 
             }
+        } else if (!selectedCountyName) { // No county selected, and possibly no geojsonLayer data
+            map.setView([37.0, -119.5], 6);
         }
     }
 
@@ -585,54 +640,64 @@
         function updateLineChart(data) {
             if (lineChartInstance) {
                 lineChartInstance.destroy();
+                lineChartInstance = null; // Ensure old instance is cleared
             }
             if (!lineChartCanvas) {
                 console.error("Line chart canvas ('lineChart') not found!");
                 return;
             }
+            
+            if (data.length === 0 && masterData.length > 0) {
+                displayChartError(lineChartCanvas, 'No data for line chart with current filters.');
+                return;
+            }
+             if (masterData.length === 0 && data.length === 0){
+                 displayChartError(lineChartCanvas, 'No data available to display.');
+                return;
+            }
 
-            // Check if data has 'Month' property for more granular time series
+
             const hasMonthData = data.length > 0 && data.some(item => typeof item.Month !== 'undefined' && item.Month !== null && !isNaN(parseInt(item.Month)));
             const casesByTimeKey = {};
 
             data.forEach(item => {
                 const year = parseInt(item.Year);
-                const month = parseInt(item.Month); // Will be NaN if not present or not a number
+                const month = parseInt(item.Month); 
                 let timeKey;
 
                 if (hasMonthData && !isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
-                    timeKey = `${year}-${String(month).padStart(2, '0')}`; // Format as YYYY-MM
+                    timeKey = `${year}-${String(month).padStart(2, '0')}`; 
                 } else if (!isNaN(year)) {
-                    timeKey = String(year); // Fallback to year only
+                    timeKey = String(year); 
                 } else {
-                    return; // Skip if no valid year
+                    return; 
                 }
                 
                 if (!casesByTimeKey[timeKey]) casesByTimeKey[timeKey] = 0;
                 casesByTimeKey[timeKey] += (Number(item.Cases) || 0);
             });
 
-            const timeKeys = Object.keys(casesByTimeKey).sort(); // Sorts chronologically
+            const timeKeys = Object.keys(casesByTimeKey).sort(); 
 
-            if (timeKeys.length === 0) {
-                const ctx = lineChartCanvas.getContext('2d');
-                ctx.clearRect(0, 0, lineChartCanvas.width, lineChartCanvas.height);
-                ctx.font = "16px 'Inter', sans-serif";
-                ctx.fillStyle = "#6b7280"; // text-gray-500
-                ctx.textAlign = 'center';
-                ctx.fillText(masterData.length > 0 ? 'No data for line chart with current filters.' : 'Loading data or no data available.', lineChartCanvas.width / 2, lineChartCanvas.height / 2);
+            if (timeKeys.length === 0 && data.length > 0) {
+                 displayChartError(lineChartCanvas, 'Could not generate time series from data.');
                 return;
             }
+             if (timeKeys.length === 0 && data.length === 0 && masterData.length === 0) { // Redundant if covered by earlier checks, but safe
+                 displayChartError(lineChartCanvas, 'No data available to display.');
+                return;
+            }
+
 
             const chartData = {
                 labels: timeKeys,
                 datasets: [{
                     label: 'Cases',
                     data: timeKeys.map(key => casesByTimeKey[key]),
-                    borderColor: 'rgba(16, 185, 129, 0.8)', // Tailwind green-500
-                    backgroundColor: 'rgba(16, 185, 129, 0.2)', // Tailwind green-500 with alpha
+                    borderColor: 'rgba(16, 185, 129, 0.8)', 
+                    backgroundColor: 'rgba(16, 185, 129, 0.2)', 
                     fill: true,
-                    tension: 0.1 // Makes the line slightly curved
+                    tension: 0.1 
                 }]
             };
 
