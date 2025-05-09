@@ -175,30 +175,49 @@
         // --- INITIALIZE DASHBOARD ---
         async function initializeDashboard() {
             try {
+                // Attempt to fetch the primary dataset
                 const response = await fetch('idb_2001-2023.json');
                 if (!response.ok) {
                     throw new Error(`Failed to fetch disease data: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
                 }
                 masterData = await response.json();
 
+                // Ensure masterData is an array. If not, treat as empty to prevent further errors.
                 if (!Array.isArray(masterData)) { 
-                    console.warn("Disease data ('idb_2001-2023.json') is not an array. Dashboard might not function correctly.");
-                    masterData = []; 
+                    console.warn("Fetched disease data ('idb_2001-2023.json') is not an array. Dashboard will initialize with empty data.", masterData);
+                    masterData = []; // This will lead to "No data available" messages, which is correct.
                 } else if (masterData.length === 0) {
-                    console.warn("Disease data is empty. Check 'idb_2001-2023.json'.");
+                    console.warn("Disease data file ('idb_2001-2023.json') is empty. Charts will show 'No data available'.");
                 }
 
+                // Populate filter dropdowns based on available masterData
                 populateFilters();
+                // Initialize the map (fetches GeoJSON internally)
                 await initializeMap(); 
-                applyFilters(); 
+                
+                // Apply initial filters (which means showing all data if masterData is populated)
+                // Ensure canvas elements exist before trying to draw on them.
+                if (barChartCanvas && lineChartCanvas) {
+                    applyFilters(); 
+                } else {
+                    console.error("Chart canvas elements not found in the DOM. Cannot apply initial filters or display charts.");
+                    // Display error on summary cards as well if canvases are missing
+                    totalCasesEl.textContent = 'Error';
+                    firstReportedEl.textContent = 'Error';
+                    lastReportedEl.textContent = 'Error';
+                }
+                
+                // Add event listeners for filter changes
                 addEventListeners();
 
             } catch (error) {
                 console.error("Error initializing dashboard:", error);
+                // Display errors on summary cards
                 totalCasesEl.textContent = 'Error';
                 firstReportedEl.textContent = 'Error';
                 lastReportedEl.textContent = 'Error';
                 
+                // Display errors on chart canvases
                 displayChartError(barChartCanvas, `Chart Error: ${error.message}`);
                 displayChartError(lineChartCanvas, `Chart Error: ${error.message}`);
                 const mapContainer = document.getElementById('map-container');
@@ -208,14 +227,17 @@
 
         // --- POPULATE FILTER DROPDOWNS ---
         function populateFilters() {
+            // Clear existing options but keep the default "All"
             diseaseFilter.innerHTML = '<option value="">All Diseases</option>';
             yearFilter.innerHTML = '<option value="">All Years</option>';
             sexFilter.innerHTML = '<option value="">All</option>';
+            // County filter is populated after GeoJSON loads in initializeMap
 
-            if (masterData.length === 0) return; 
+            if (masterData.length === 0) return; // Don't try to populate from empty data
 
+            // Extract unique, sorted values for filters. Filter out any null/undefined values.
             const diseases = [...new Set(masterData.map(item => item.Disease))].filter(Boolean).sort();
-            const years = [...new Set(masterData.map(item => parseInt(item.Year)))].filter(y => !isNaN(y)).sort((a,b) => b-a);
+            const years = [...new Set(masterData.map(item => parseInt(item.Year)))].filter(y => !isNaN(y)).sort((a,b) => b-a); // Numeric sort, descending
             const sexes = [...new Set(masterData.map(item => item.Sex))].filter(Boolean).sort();
 
             diseases.forEach(d => {
@@ -226,8 +248,8 @@
             });
             years.forEach(y => {
                 const option = document.createElement('option');
-                option.value = y;
-                option.textContent = y;
+                option.value = y; // Value is the number
+                option.textContent = y; // Text is the number
                 yearFilter.appendChild(option);
             });
              sexes.forEach(s => {
@@ -245,16 +267,18 @@
             yearFilter.addEventListener('change', applyFilters);
             sexFilter.addEventListener('change', applyFilters);
             clearFiltersBtn.addEventListener('click', () => {
+                // Reset all filter dropdowns to their default "All" value
                 diseaseFilter.value = "";
                 countyFilter.value = "";
                 yearFilter.value = "";
                 sexFilter.value = "";
-                applyFilters();
+                applyFilters(); // Re-apply filters to update the view
             });
         }
 
         // --- APPLY FILTERS AND UPDATE DISPLAY ---
         function applyFilters() {
+            // Guard against re-entrant calls to prevent stack overflow
             if (isApplyingFilters) {
                 console.warn("applyFilters() called while already running. Aborting to prevent recursion.");
                 return; 
@@ -264,35 +288,42 @@
             try {
                 const selectedDisease = diseaseFilter.value;
                 const selectedCounty = countyFilter.value;
-                const selectedYearStr = yearFilter.value; 
+                const selectedYearStr = yearFilter.value; // Year from filter is a string
                 const selectedSex = sexFilter.value;
 
+                // Filter masterData based on current selections
                 const filteredData = masterData.filter(item => {
+                    // Ensure item.Year is treated as a number for comparison
                     const itemYear = parseInt(item.Year); 
+                    // If a filter is not set (empty string), it's considered a pass (true)
                     return (selectedDisease ? item.Disease === selectedDisease : true) &&
                            (selectedCounty ? item.County === selectedCounty : true) &&
                            (selectedYearStr ? itemYear === parseInt(selectedYearStr) : true) && 
                            (selectedSex ? item.Sex === selectedSex : true);
                 });
 
+                // Update all dashboard components with the filtered data
                 updateSummaryStats(filteredData);
                 updateBarChart(filteredData);
                 updateLineChart(filteredData);
-                updateMapVisualization(selectedCounty); 
+                updateMapVisualization(selectedCounty); // Map visualization might only need selectedCounty
             } catch (e) {
                 console.error("Error during applyFilters processing:", e);
+                // Optionally, display a user-facing error message here
             } finally {
-                isApplyingFilters = false; 
+                isApplyingFilters = false; // Reset the guard flag
             }
         }
 
         // --- UPDATE SUMMARY STATISTICS ---
         function updateSummaryStats(data) {
+            // Calculate total cases from the 'Cases' property of items in the data array
             const totalCases = data.reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
             let firstReportedYear = 'N/A';
             let lastReportedYear = 'N/A';
 
             if (data.length > 0) {
+                // Extract valid years, convert to numbers, and find min/max
                 const yearsInData = data.map(item => parseInt(item.Year)).filter(year => !isNaN(year));
                 if (yearsInData.length > 0) {
                     firstReportedYear = Math.min(...yearsInData).toString();
@@ -300,7 +331,8 @@
                 }
             }
 
-            totalCasesEl.textContent = totalCases.toLocaleString();
+            // Update the DOM elements with formatted values
+            totalCasesEl.textContent = totalCases.toLocaleString(); // Format number with commas
             firstReportedEl.textContent = firstReportedYear;
             lastReportedEl.textContent = lastReportedYear;
         }
@@ -313,7 +345,6 @@
             }
 
             // Ensure canvas drawing surface matches its styled size.
-            // This is crucial if Chart.js hasn't initialized the canvas dimensions yet.
             if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
                 canvas.width = canvas.clientWidth;
                 canvas.height = canvas.clientHeight;
@@ -321,28 +352,26 @@
 
             const ctx = canvas.getContext('2d');
             
-            // If canvas has no effective drawing area, exit.
             if (canvas.width === 0 || canvas.height === 0) {
                 // console.warn(`Canvas ${canvas.id || 'Unnamed'} has zero dimensions. Cannot display message.`);
-                return;
+                return; // Avoid drawing on a zero-size canvas
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height); 
             ctx.font = "14px 'Inter', sans-serif";
             
-            // Set text color based on message content
             if (message && (message.toLowerCase().includes("error") || message.toLowerCase().includes("failed"))) {
-                ctx.fillStyle = "#ef4444"; // Tailwind text-red-500 for errors
+                ctx.fillStyle = "#ef4444"; // Red for errors
             } else {
-                ctx.fillStyle = "#6b7280"; // Tailwind text-gray-500 for "no data" messages
+                ctx.fillStyle = "#6b7280"; // Gray for "no data"
             }
 
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle'; // Align text vertically to the middle
+            ctx.textBaseline = 'middle'; 
 
-            const maxWidth = canvas.width - 40; // Max width for text with padding
+            const maxWidth = canvas.width - 40; 
             const lineHeight = 18;
-            const words = (message || 'No data available.').split(' '); // Default message if none provided
+            const words = (message || 'No data available.').split(' '); 
             let lines = [];
             let currentLine = '';
 
@@ -350,7 +379,7 @@
                 const testLine = currentLine + words[n] + ' ';
                 const metrics = ctx.measureText(testLine);
                 const testWidth = metrics.width;
-                if (testWidth > maxWidth && currentLine.length > 0) { // Ensure currentLine is not empty before pushing
+                if (testWidth > maxWidth && currentLine.length > 0) { 
                     lines.push(currentLine.trim());
                     currentLine = words[n] + ' ';
                 } else {
@@ -358,17 +387,11 @@
                 }
             }
             lines.push(currentLine.trim());
-
-            // Remove empty lines that might result from split and trim
             lines = lines.filter(line => line.length > 0);
-
-            if (lines.length === 0) { // If message was empty or all spaces
-                 lines.push('No data available.');
-            }
+            if (lines.length === 0) lines.push('No data available.');
 
             const totalTextHeight = lines.length * lineHeight;
-            // Calculate starting Y position to center the block of text vertically
-            let startY = (canvas.height - totalTextHeight) / 2 + (lineHeight / 2); // Add half lineHeight to align baseline correctly
+            let startY = (canvas.height - totalTextHeight) / 2 + (lineHeight / 2); 
 
             for (let i = 0; i < lines.length; i++) {
                 ctx.fillText(lines[i], canvas.width / 2, startY + (i * lineHeight));
@@ -378,6 +401,7 @@
 
         // --- BAR CHART FOR FILTERED DATA ---
         function updateBarChart(data) {
+            // Destroy existing chart instance if it exists
             if (barChartInstance) {
                 barChartInstance.destroy();
                 barChartInstance = null; 
@@ -391,6 +415,7 @@
             const selectedCounty = countyFilter.value;
             const selectedYearStr = yearFilter.value;
 
+            // Handle cases where data is empty
             if (data.length === 0 && masterData.length > 0) { 
                 displayChartError(barChartCanvas, 'No data for chart with current filters.');
                 return;
@@ -400,34 +425,34 @@
                 return;
             }
 
+            // Aggregate data for the chart
             const casesByCategory = {};
-            const groupByKey = selectedYearStr ? 'County' : 'Year';
+            // Group by County if a Year is selected, otherwise group by Year
+            const groupByKey = selectedYearStr ? 'County' : 'Year'; 
             
             data.forEach(item => {
                 const categoryValue = item[groupByKey];
-                if (!categoryValue) return; 
+                if (!categoryValue) return; // Skip if category key is missing
                 if (!casesByCategory[categoryValue]) casesByCategory[categoryValue] = 0;
                 casesByCategory[categoryValue] += (Number(item.Cases) || 0);
             });
 
+            // Sort categories (numerically for years, alphabetically for counties)
             const categories = Object.keys(casesByCategory).sort((a, b) => {
                 return groupByKey === 'Year' ? parseInt(a) - parseInt(b) : a.localeCompare(b);
             });
             
+            // If no categories could be formed from the data
             if (categories.length === 0 && data.length > 0) { 
                 displayChartError(barChartCanvas, 'Could not generate chart categories from data.');
                 return;
             }
-             // If categories is still empty here, it implies data was empty, which should have been caught above.
-            // However, if data had items but none formed categories (e.g. all items missing 'County' or 'Year'),
-            // and data.length > 0 was true, the above handles it.
-            // If categories is empty because data was empty, displayChartError was already called.
-            if (categories.length === 0) { // Final catch-all if no categories could be made (e.g. data became empty after processing)
+            if (categories.length === 0) { 
                 displayChartError(barChartCanvas, 'No categories to display for the chart.');
                 return;
             }
 
-
+            // Prepare chart data and options
             const chartData = {
                 labels: categories,
                 datasets: [{
@@ -463,6 +488,7 @@
                 }
             };
 
+            // Create the new chart
             barChartInstance = new Chart(barChartCanvas, {
                 type: 'bar',
                 data: chartData,
@@ -486,18 +512,21 @@
         color: "#1D4ED8", 
     };
     
+    // Generates a color from a string for consistent county coloring
     function stringToColor(str) { 
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             hash = str.charCodeAt(i) + ((hash << 5) - hash);
-            hash = hash & hash;
+            hash = hash & hash; // Convert to 32bit integer
         }
         let r = (hash & 0xFF0000) >> 16;
         let g = (hash & 0x00FF00) >> 8;
         let b = hash & 0x0000FF;
+        // Adjust components to ensure reasonable brightness and color variety
         r = 30 + (r % 195); 
         g = 30 + (g % 195);
         b = 30 + (b % 195);
+        // Avoid shades too close to the highlight color (blue)
         if (Math.abs(r - 59) < 30 && Math.abs(g - 130) < 30 && Math.abs(b - 246) < 30) {
             g = (g + 100) % 195 + 30; 
         }
@@ -511,9 +540,10 @@
             console.error("Map container not found!");
             return; 
         }
-        mapContainer.innerHTML = ''; 
+        mapContainer.innerHTML = ''; // Clear previous content (e.g., error messages)
 
-        const californiaBounds = [[32.5, -124.5], [42, -114.0]];
+        const californiaBounds = [[32.5, -124.5], [42, -114.0]]; // Approx. CA bounds
+        // Remove existing map instance if one exists (e.g., during a hot reload scenario)
         if (map) {
             map.remove(); 
             map = null;
@@ -522,31 +552,36 @@
             center: [37.0, -119.5], zoom: 6, maxBounds: californiaBounds, minZoom: 5
         });
 
+        // Add base tile layer (OpenStreetMap)
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
             maxZoom: 18
         }).addTo(map);
 
         try {
+            // Fetch GeoJSON data for California counties
             const response = await fetch('california-counties.geojson'); 
             if (!response.ok) {
                 throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
             }
             californiaGeoJsonData = await response.json();
             
+            // Validate GeoJSON data
             if (!californiaGeoJsonData || !californiaGeoJsonData.features || californiaGeoJsonData.features.length === 0) {
                 console.warn("GeoJSON data is empty or invalid.");
                 if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-yellow-500 p-4">Map data (GeoJSON) is empty or invalid. Counties cannot be displayed.</p>`;
                 return; 
             }
 
+            // Populate County Filter Dropdown from GeoJSON properties
             if (countyFilter && californiaGeoJsonData && californiaGeoJsonData.features) {
                 countyFilter.innerHTML = '<option value="">All Counties</option>'; 
                 const countyNamesForDropdown = [];
                 const countySet = new Set(); 
                 californiaGeoJsonData.features.forEach(feature => {
+                    // Ensure 'feature.properties.name' matches 'County' field in idb_2001-2023.json
                     const countyValue = feature.properties.name; 
-                    const countyDisplayText = feature.properties.NAME || feature.properties.name; 
+                    const countyDisplayText = feature.properties.NAME || feature.properties.name; // Use NAME if available, fallback to name
                     if (countyValue && !countySet.has(countyValue)) {
                         countySet.add(countyValue);
                         countyNamesForDropdown.push({ value: countyValue, text: countyDisplayText });
@@ -561,33 +596,38 @@
                 });
             }
 
+            // Remove old GeoJSON layer if it exists
             if (geojsonLayer) { 
                 map.removeLayer(geojsonLayer);
                 geojsonLayer = null;
             }
+            // Create and add the new GeoJSON layer
             geojsonLayer = L.geoJson(californiaGeoJsonData, {
                 style: function(feature) {
                     const countyId = feature.properties.name || 'UnknownCounty';
+                    // Store or generate a default color for each county
                     if (!feature.properties.defaultColor) { 
-                        feature.properties.defaultColor = stringToColor(countyId + "salt"); 
+                        feature.properties.defaultColor = stringToColor(countyId + "salt"); // Add salt for color variation
                     }
                     return { ...BASE_COUNTY_STYLE, fillColor: feature.properties.defaultColor };
                 },
                 onEachFeature: function(feature, layer) {
                     const countyDisplayName = feature.properties.NAME || feature.properties.name || "N/A";
+                    // This 'name' property MUST match county names in your disease data for filtering and tooltips.
                     const countyValueForFiltering = feature.properties.name; 
 
+                    // Bind a tooltip to each county layer
                     layer.bindTooltip(() => {
                         const selectedDisease = diseaseFilter.value;
                         let tooltipContent = `<b>${countyDisplayName}</b>`;
                         
                         if (masterData.length > 0 && countyValueForFiltering) {
                             const currentFilters = { 
-                                disease: diseaseFilter.value, // This is selectedDisease, kept for clarity
                                 year: yearFilter.value,
                                 sex: sexFilter.value
                             };
 
+                            // Calculate total cases in this county, respecting other active filters
                             const casesInCountyAllDiseases = masterData
                                 .filter(item => item.County === countyValueForFiltering &&
                                                (currentFilters.year ? parseInt(item.Year) === parseInt(currentFilters.year) : true) &&
@@ -597,6 +637,7 @@
                             
                             tooltipContent += `<br>Total Cases (active filters): ${casesInCountyAllDiseases.toLocaleString()}`;
 
+                            // If a specific disease is selected in the main filter, show its count too
                             if (selectedDisease) { 
                                  const casesForSelectedDisease = masterData
                                     .filter(item => item.County === countyValueForFiltering && 
@@ -615,7 +656,10 @@
                         return tooltipContent;
                     });
 
+                    // Add click listener to county layers
                     layer.on('click', function(e) {
+                        // When a county on the map is clicked, update the county filter dropdown
+                        // and re-apply all filters to update the dashboard.
                         if (countyValueForFiltering) {
                             countyFilter.value = countyValueForFiltering;
                             applyFilters(); 
@@ -630,32 +674,37 @@
         }
     }
 
+    // Updates the map visualization based on the selected county
     function updateMapVisualization(selectedCountyName) {
-        if (!geojsonLayer || !map) return;
+        if (!geojsonLayer || !map) return; // Do nothing if map or layer isn't initialized
 
         let highlightedLayer = null;
         geojsonLayer.eachLayer(function(layer) {
             const geoJsonCountyName = layer.feature.properties.name; 
 
+            // If a county is selected and matches this layer, highlight it
             if (geoJsonCountyName && selectedCountyName && geoJsonCountyName.toLowerCase() === selectedCountyName.toLowerCase()) {
                 layer.setStyle(HIGHLIGHTED_COUNTY_STYLE);
-                layer.bringToFront();
+                layer.bringToFront(); // Bring highlighted layer to the front
                 highlightedLayer = layer;
             } else {
+                // Otherwise, revert to its default style
                 const defaultColor = layer.feature.properties.defaultColor || stringToColor((geoJsonCountyName || "unknown") + "salt");
                 layer.setStyle({ ...BASE_COUNTY_STYLE, fillColor: defaultColor });
             }
         });
 
+        // Zoom to the highlighted county or reset view
         if (highlightedLayer) {
             map.fitBounds(highlightedLayer.getBounds(), { paddingTopLeft: [20,20], paddingBottomRight: [20,20], maxZoom: 8 });
         } else if (!selectedCountyName && californiaGeoJsonData && geojsonLayer.getLayers().length > 0) { 
+             // If "All Counties" is selected, fit map to show all counties
              if (geojsonLayer.getBounds().isValid()) {
                 map.fitBounds(geojsonLayer.getBounds());
             } else {
-                map.setView([37.0, -119.5], 6); 
+                map.setView([37.0, -119.5], 6); // Fallback reset
             }
-        } else if (!selectedCountyName) { 
+        } else if (!selectedCountyName) { // Fallback if no county selected and no GeoJSON bounds
             map.setView([37.0, -119.5], 6);
         }
     }
@@ -671,6 +720,7 @@
                 return;
             }
             
+            // Handle empty data scenarios
             if (data.length === 0 && masterData.length > 0) {
                 displayChartError(lineChartCanvas, 'No data for line chart with current filters.');
                 return;
@@ -680,75 +730,82 @@
                 return;
             }
 
+            // Determine if data includes month-level granularity
             const hasMonthData = data.length > 0 && data.some(item => typeof item.Month !== 'undefined' && item.Month !== null && !isNaN(parseInt(item.Month)));
-            const casesByTimeKey = {};
+            const casesByTimeKey = {}; // To store aggregated cases by time period (year or year-month)
 
+            // Aggregate data by time key
             data.forEach(item => {
                 const year = parseInt(item.Year);
                 const month = parseInt(item.Month); 
                 let timeKey;
 
                 if (hasMonthData && !isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
-                    timeKey = `${year}-${String(month).padStart(2, '0')}`; 
+                    timeKey = `${year}-${String(month).padStart(2, '0')}`; // YYYY-MM format
                 } else if (!isNaN(year)) {
-                    timeKey = String(year); 
+                    timeKey = String(year); // Year only
                 } else {
-                    return; 
+                    return; // Skip if no valid year
                 }
                 
                 if (!casesByTimeKey[timeKey]) casesByTimeKey[timeKey] = 0;
                 casesByTimeKey[timeKey] += (Number(item.Cases) || 0);
             });
 
-            const timeKeys = Object.keys(casesByTimeKey).sort(); 
+            const timeKeys = Object.keys(casesByTimeKey).sort(); // Sort time keys chronologically
 
+            // Handle cases where no time keys could be generated
             if (timeKeys.length === 0 && data.length > 0) {
                  displayChartError(lineChartCanvas, 'Could not generate time series from data.');
                 return;
             }
-            if (timeKeys.length === 0) { // If no time keys, display message
+            if (timeKeys.length === 0) { 
                  displayChartError(lineChartCanvas, 'No time series data to display for current filters.');
                 return;
             }
 
+            // Prepare chart data and options
             const chartData = {
                 labels: timeKeys,
                 datasets: [{
                     label: 'Cases',
                     data: timeKeys.map(key => casesByTimeKey[key]),
-                    borderColor: 'rgba(16, 185, 129, 0.8)', 
+                    borderColor: 'rgba(16, 185, 129, 0.8)', // Tailwind green-500
                     backgroundColor: 'rgba(16, 185, 129, 0.2)', 
                     fill: true,
-                    tension: 0.1 
+                    tension: 0.1 // Slight curve to the line
                 }]
             };
 
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    title: { display: true, text: 'Cases Over Time' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: hasMonthData ? 'Year-Month' : 'Year' } },
+                    y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true, ticks: { callback: value => value.toLocaleString() } }
+                }
+            };
+            // Create the new line chart
             lineChartInstance = new Chart(lineChartCanvas, {
                 type: 'line',
                 data: chartData,
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'top' },
-                        title: { display: true, text: 'Cases Over Time' },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: { title: { display: true, text: hasMonthData ? 'Year-Month' : 'Year' } },
-                        y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true, ticks: { callback: value => value.toLocaleString() } }
-                    }
-                }
+                options: chartOptions
             });
         }
 
         // --- RUN INITIALIZATION ON PAGE LOAD ---
+        // This ensures the script runs after the full HTML document is parsed and ready.
         document.addEventListener('DOMContentLoaded', initializeDashboard);
 
     </script>
