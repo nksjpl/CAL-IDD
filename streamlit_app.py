@@ -1,5 +1,12 @@
+import subprocess
+import sys
 import streamlit as st
 import json
+
+try:
+    import geopandas as gpd
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "geopandas"])
 import geopandas as gpd
 import pandas as pd
 import altair as alt
