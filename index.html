@@ -172,6 +172,67 @@
         let isApplyingFilters = false;
         let dataLoadError = null; // To track data loading errors
 
+        // --- COUNTY NAME MAPPING ---
+        // This mapping is used to handle inconsistencies between the county names in the disease data and the GeoJSON data.
+        const COUNTY_NAME_MAPPING = {
+            "Los Angeles": "Los Angeles",
+            "San Diego": "San Diego",
+            "Orange": "Orange",
+            "San Bernardino": "San Bernardino",
+            "Riverside": "Riverside",
+            "Alameda": "Alameda",
+            "Sacramento": "Sacramento",
+            "Santa Clara": "Santa Clara",
+            "Contra Costa": "Contra Costa",
+            "Fresno": "Fresno",
+            "Kern": "Kern",
+            "San Francisco": "San Francisco",
+            "Ventura": "Ventura",
+            "San Mateo": "San Mateo",
+            "Santa Barbara": "Santa Barbara",
+            "Monterey": "Monterey",
+            "Sonoma": "Sonoma",
+            "Placer": "Placer",
+            "San Joaquin": "San Joaquin",
+            "Stanislaus": "Stanislaus",
+            "Solano": "Solano",
+            "Santa Cruz": "Santa Cruz",
+            "Tulare": "Tulare",
+            "Marin": "Marin",
+            "Merced": "Merced",
+            "Yolo": "Yolo",
+            "El Dorado": "El Dorado",
+            "Butte": "Butte",
+            "Nevada": "Nevada",
+            "Shasta": "Shasta",
+            "San Luis Obispo": "San Luis Obispo",
+            "Yuba": "Yuba",
+            "Mendocino": "Mendocino",
+            "Imperial": "Imperial",
+            "Madera": "Madera",
+            "Kings": "Kings",
+            "Siskiyou": "Siskiyou",
+            "Napa": "Napa",
+            "Humboldt": "Humboldt",
+            "Solano": "Solano",  // Added to handle duplicate, check if correct
+            "Plumas": "Plumas",
+            "Amador": "Amador",
+            "Lake": "Lake",
+            "Tehama": "Tehama",
+            "Calaveras": "Calaveras",
+            "Tuolumne": "Tuolumne",
+            "Sutter": "Sutter",
+            "Lassen": "Lassen",
+            "Glenn": "Glenn",
+            "Colusa": "Colusa",
+            "Del Norte": "Del Norte",
+            "Sierra": "Sierra",
+            "Modoc": "Modoc",
+            "Trinity": "Trinity",
+            "Mariposa": "Mariposa",
+            "Alpine": "Alpine",
+        };
+
         // --- INITIALIZE DASHBOARD ---
         async function initializeDashboard() {
             try {
@@ -182,13 +243,22 @@
                 }
                 masterData = await response.json();
 
-                // Ensure masterData is an array. If not, treat as empty to prevent further errors.
+                // Ensure masterData is an array and has the expected structure
                 if (!Array.isArray(masterData)) {
-                    const errorMsg = "Fetched disease data ('idb_2001-2023.json') is not an array. Dashboard will initialize with empty data.";
+                    const errorMsg = "Fetched disease data ('idb_2001-2023.json') is not an array.  Expected an array of data objects.";
                     console.error(errorMsg, masterData);
                     masterData = [];
                     dataLoadError = errorMsg; // Set the error flag
-                } else if (masterData.length === 0) {
+                } else if (masterData.length > 0) {
+                    // Check the structure of the first element to validate the data structure
+                    const firstItem = masterData[0];
+                    if (!firstItem.Year || !firstItem.Cases || !firstItem.Disease || !firstItem.County) {
+                        const errorMsg = "Fetched disease data ('idb_2001-2023.json') is missing required properties ('Year', 'Cases', 'Disease', 'County').";
+                        console.error(errorMsg, masterData);
+                        masterData = [];
+                        dataLoadError = errorMsg;
+                    }
+                } else {
                     const warnMsg = "Disease data file ('idb_2001-2023.json') is empty. Charts will show 'No data available'.";
                     console.warn(warnMsg);
                     dataLoadError = warnMsg;
@@ -248,9 +318,9 @@
             sexFilter.innerHTML = '<option value="">All</option>';
             // County filter is populated after GeoJSON loads in initializeMap
 
-            if (masterData.length === 0 && !dataLoadError) return; // Don't try to populate from empty data, unless there is a dataLoadError
+           if (masterData.length === 0 && !dataLoadError) return;
 
-            // Extract unique, sorted values for filters. Filter out any null/undefined values.
+            // Extract unique, sorted values for filters.  Filter out any null/undefined values.
             const diseases = [...new Set(masterData.map(item => item.Disease))].filter(Boolean).sort();
             const years = [...new Set(masterData.map(item => parseInt(item.Year)))].filter(y => !isNaN(y)).sort((a,b) => b-a); // Numeric sort, descending
             const sexes = [...new Set(masterData.map(item => item.Sex))].filter(Boolean).sort();
@@ -337,13 +407,20 @@
         // --- UPDATE SUMMARY STATISTICS ---
         function updateSummaryStats(data) {
             // Calculate total cases from the 'Cases' property of items in the data array
-            const totalCases = data.reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
+            const totalCases = data.reduce((sum, item) => {
+                const cases = parseInt(item.Cases);
+                return isNaN(cases) ? sum : sum + cases;
+            }, 0);
+
             let firstReportedYear = 'N/A';
             let lastReportedYear = 'N/A';
 
             if (data.length > 0) {
                 // Extract valid years, convert to numbers, and find min/max
-                const yearsInData = data.map(item => parseInt(item.Year)).filter(year => !isNaN(year));
+                const yearsInData = data
+                    .map(item => parseInt(item.Year))
+                    .filter(year => !isNaN(year)); // Filter out invalid years
+
                 if (yearsInData.length > 0) {
                     firstReportedYear = Math.min(...yearsInData).toString();
                     lastReportedYear = Math.max(...yearsInData).toString();
@@ -417,7 +494,6 @@
             }
         }
 
-
         // --- BAR CHART FOR FILTERED DATA ---
         function updateBarChart(data) {
             // Destroy existing chart instance if it exists
@@ -435,30 +511,41 @@
             const selectedYearStr = yearFilter.value;
 
             // Handle cases where data is empty
-            if (data.length === 0 && masterData.length > 0) {
+            if (data.length ===0 && masterData.length > 0) {
                 displayChartError(barChartCanvas, 'No data for chart with current filters.');
                 return;
             }
-            if (masterData.length === 0 && data.length === 0){
-                 displayChartError(barChartCanvas, 'No data available to display.');
+            if (masterData.length === 0 && data.length === 0) {
+                displayChartError(barChartCanvas, 'No data available to display.');
                 return;
             }
 
             // Aggregate data for the chart
-            const casesByCategory = {};
-            // Group by County if a Year is selected, otherwise group by Year
+              const casesByCategory = {};
             const groupByKey = selectedYearStr ? 'County' : 'Year';
 
             data.forEach(item => {
                 const categoryValue = item[groupByKey];
-                if (!categoryValue) return; // Skip if category key is missing
-                if (!casesByCategory[categoryValue]) casesByCategory[categoryValue] = 0;
-                casesByCategory[categoryValue] += (Number(item.Cases) || 0);
+                const cases = parseInt(item.Cases); // Parse cases here
+
+                if (!categoryValue || isNaN(cases)) return; // Skip if category or cases are invalid
+
+                if (!casesByCategory[categoryValue]) {
+                    casesByCategory[categoryValue] = 0;
+                }
+                casesByCategory[categoryValue] += cases;
             });
 
-            // Sort categories (numerically for years, alphabetically for counties)
+            // Sort categories
             const categories = Object.keys(casesByCategory).sort((a, b) => {
-                return groupByKey === 'Year' ? parseInt(a) - parseInt(b) : a.localeCompare(b);
+                if (groupByKey === 'Year') {
+                    return parseInt(a) - parseInt(b);
+                } else {
+                     // Map county names for consistent sorting
+                    const countyA = COUNTY_NAME_MAPPING[a] || a;
+                    const countyB = COUNTY_NAME_MAPPING[b] || b;
+                    return countyA.localeCompare(countyB);
+                }
             });
 
             // If no categories could be formed from the data
@@ -502,7 +589,15 @@
                     }
                 },
                 scales: {
-                    x: { title: { display: true, text: groupByKey } },
+                    x: {
+                         title: { display: true, text: groupByKey },
+                         ticks: {
+                            callback: function (value) {
+                                // Map the county name for display
+                                return groupByKey === 'County' ? (COUNTY_NAME_MAPPING[this.getLabelForValue(value)] || this.getLabelForValue(value)) : value;
+                            }
+                         }
+                       },
                     y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true, ticks: { callback: value => value.toLocaleString() } }
                 }
             };
@@ -538,7 +633,8 @@
             hash = str.charCodeAt(i) + ((hash << 5) - hash);
             hash = hash & hash; // Convert to 32bit integer
         }
-        let r = (hash & 0xFF0000) >> 16;let g = (hash & 0x00FF00) >> 8;
+        let r = (hash & 0xFF0000) >> 16;
+        let g = (hash & 0x00FF00) >> 8;
         let b = hash & 0x0000FF;
         // Adjust components to ensure reasonable brightness and color variety
         r = 30 + (r % 195);
@@ -598,9 +694,9 @@
                 const countyNamesForDropdown = [];
                 const countySet = new Set();
                 californiaGeoJsonData.features.forEach(feature => {
-                    // Ensure 'feature.properties.name' matches 'County' field in idb_2001-2023.json
-                    const countyValue = feature.properties.name;
-                    const countyDisplayText = feature.properties.NAME || feature.properties.name; // Use NAME if available, fallback to name
+                    // Use the mapping and fallback to handle discrepancies
+                    const countyValue = COUNTY_NAME_MAPPING[feature.properties.name] || feature.properties.name;
+                    const countyDisplayText = feature.properties.NAME || feature.properties.name;
                     if (countyValue && !countySet.has(countyValue)) {
                         countySet.add(countyValue);
                         countyNamesForDropdown.push({ value: countyValue, text: countyDisplayText });
@@ -626,13 +722,13 @@
                     const countyId = feature.properties.name || 'UnknownCounty';
                     // Store or generate a default color for each county
                     if (!feature.properties.defaultColor) {
-                        feature.properties.defaultColor = stringToColor(countyId + "salt"); // Add salt for color variation
+                         feature.properties.defaultColor = stringToColor(countyId + "salt");
                     }
                     return { ...BASE_COUNTY_STYLE, fillColor: feature.properties.defaultColor };
                 },
                 onEachFeature: function(feature, layer) {
                     const countyDisplayName = feature.properties.NAME || feature.properties.name || "N/A";
-                    const countyValueForFiltering = feature.properties.name;
+                    const countyValueForFiltering = COUNTY_NAME_MAPPING[feature.properties.name] || feature.properties.name;
 
                     // Bind a tooltip to each county layer
                     layer.bindTooltip(() => {
@@ -700,7 +796,7 @@
 
         let highlightedLayer = null;
         geojsonLayer.eachLayer(function(layer) {
-            const geoJsonCountyName = layer.feature.properties.name;
+            const geoJsonCountyName = COUNTY_NAME_MAPPING[layer.feature.properties.name] || layer.feature.properties.name;
 
             // If a county is selected and matches this layer, highlight it
             if (geoJsonCountyName && selectedCountyName && geoJsonCountyName.toLowerCase() === selectedCountyName.toLowerCase()) {
@@ -745,8 +841,8 @@
                 displayChartError(lineChartCanvas, 'No data for line chart with current filters.');
                 return;
             }
-             if (masterData.length === 0 && data.length === 0){
-                 displayChartError(lineChartCanvas, 'No data available to display.');
+            if (masterData.length === 0 && data.length === 0) {
+                displayChartError(lineChartCanvas, 'No data available to display.');
                 return;
             }
 
@@ -754,11 +850,14 @@
             const hasMonthData = data.length > 0 && data.some(item => typeof item.Month !== 'undefined' && item.Month !== null && !isNaN(parseInt(item.Month)));
             const casesByTimeKey = {}; // To store aggregated cases by time period (year or year-month)
 
-            // Aggregate data by time key
+             // Aggregate data by time key
             data.forEach(item => {
                 const year = parseInt(item.Year);
                 const month = parseInt(item.Month);
+                const cases = parseInt(item.Cases);  // Parse cases here.
                 let timeKey;
+
+                if (isNaN(cases)) return; // Skip if cases is not a valid number
 
                 if (hasMonthData && !isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
                     timeKey = `${year}-${String(month).padStart(2, '0')}`;
@@ -771,7 +870,7 @@
                 if (!casesByTimeKey[timeKey]) {
                     casesByTimeKey[timeKey] = 0;
                 }
-                casesByTimeKey[timeKey] += (Number(item.Cases) || 0);
+                casesByTimeKey[timeKey] += cases;
             });
 
             // Convert aggregated data to chart-friendly format (sorted by time)
