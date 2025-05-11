@@ -170,6 +170,7 @@
 
         // --- STATE VARIABLES ---
         let isApplyingFilters = false;
+        let dataLoadError = null; // To track data loading errors
 
         // --- INITIALIZE DASHBOARD ---
         async function initializeDashboard() {
@@ -177,16 +178,20 @@
                 // Attempt to fetch the primary dataset
                 const response = await fetch('idb_2001-2023.json');
                 if (!response.ok) {
-                    throw new Error(`Failed to fetch disease data: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
+                    throw new Error(`Failed to fetch disease data: ${response.status} ${response.statusText}. Check file path and ensure it's hosted correctly.  Server response: ${await response.text()}`);
                 }
                 masterData = await response.json();
 
                 // Ensure masterData is an array. If not, treat as empty to prevent further errors.
                 if (!Array.isArray(masterData)) {
-                    console.warn("Fetched disease data ('idb_2001-2023.json') is not an array. Dashboard will initialize with empty data.", masterData);
+                    const errorMsg = "Fetched disease data ('idb_2001-2023.json') is not an array. Dashboard will initialize with empty data.";
+                    console.error(errorMsg, masterData);
                     masterData = [];
+                    dataLoadError = errorMsg; // Set the error flag
                 } else if (masterData.length === 0) {
-                    console.warn("Disease data file ('idb_2001-2023.json') is empty. Charts will show 'No data available'.");
+                    const warnMsg = "Disease data file ('idb_2001-2023.json') is empty. Charts will show 'No data available'.";
+                    console.warn(warnMsg);
+                    dataLoadError = warnMsg;
                 }
 
                 // Populate filter dropdowns based on available masterData
@@ -199,11 +204,12 @@
                 if (barChartCanvas && lineChartCanvas) {
                     applyFilters();
                 } else {
-                    console.error("Chart canvas elements not found in the DOM. Cannot apply initial filters or display charts.");
-                    // Display error on summary cards as well if canvases are missing
+                    const errorMsg = "Chart canvas elements not found in the DOM. Cannot apply initial filters or display charts.";
+                    console.error(errorMsg);
                     totalCasesEl.textContent = 'Error';
                     firstReportedEl.textContent = 'Error';
                     lastReportedEl.textContent = 'Error';
+                    dataLoadError = errorMsg;
                 }
 
                 // Add event listeners for filter changes
@@ -211,6 +217,7 @@
 
             } catch (error) {
                 console.error("Error initializing dashboard:", error);
+                dataLoadError = error.message; // Store the error message
                 // Display errors on summary cards
                 totalCasesEl.textContent = 'Error';
                 firstReportedEl.textContent = 'Error';
@@ -221,6 +228,15 @@
                 displayChartError(lineChartCanvas, `Chart Error: ${error.message}`);
                 const mapContainer = document.getElementById('map-container');
                 if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-red-500 p-4">Error loading dashboard: ${error.message}</p>`;
+            } finally {
+                if (dataLoadError) {
+                    // Handle the error.  For example, display a message to the user
+                    console.error("Data Load Error:", dataLoadError);
+                    // Consider displaying an error message to the user in the UI.
+                    // For example, you could create a div in your HTML to display error messages:
+                    // <div id="error-message" class="text-red-500 p-4"></div>
+                    // document.getElementById('error-message').textContent = dataLoadError;
+                }
             }
         }
 
@@ -232,7 +248,7 @@
             sexFilter.innerHTML = '<option value="">All</option>';
             // County filter is populated after GeoJSON loads in initializeMap
 
-            if (masterData.length === 0) return; // Don't try to populate from empty data
+            if (masterData.length === 0 && !dataLoadError) return; // Don't try to populate from empty data, unless there is a dataLoadError
 
             // Extract unique, sorted values for filters. Filter out any null/undefined values.
             const diseases = [...new Set(masterData.map(item => item.Disease))].filter(Boolean).sort();
@@ -522,8 +538,7 @@
             hash = str.charCodeAt(i) + ((hash << 5) - hash);
             hash = hash & hash; // Convert to 32bit integer
         }
-        let r = (hash & 0xFF0000) >> 16;
-        let g = (hash & 0x00FF00) >> 8;
+        let r = (hash & 0xFF0000) >> 16;let g = (hash & 0x00FF00) >> 8;
         let b = hash & 0x0000FF;
         // Adjust components to ensure reasonable brightness and color variety
         r = 30 + (r % 195);
@@ -565,14 +580,15 @@
             // Fetch GeoJSON data for California counties
             const response = await fetch('california-counties.geojson');
             if (!response.ok) {
-                throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
+                throw new Error(`Failed to fetch GeoJSON: ${response.status} ${response.statusText}. Check file path and ensure it's hosted correctly.  Server response: ${await response.text()}`);
             }
             californiaGeoJsonData = await response.json();
 
             // Validate GeoJSON data
             if (!californiaGeoJsonData || !californiaGeoJsonData.features || californiaGeoJsonData.features.length === 0) {
-                console.warn("GeoJSON data is empty or invalid.");
-                if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-yellow-500 p-4">Map data (GeoJSON) is empty or invalid. Counties cannot be displayed.</p>`;
+                const errorMsg = "GeoJSON data is empty or invalid.";
+                console.warn(errorMsg);
+                if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-yellow-500 p-4">${errorMsg} Counties cannot be displayed.</p>`;
                 return;
             }
 
@@ -672,7 +688,9 @@
 
         } catch (error) {
             console.error("Error loading or processing GeoJSON for map:", error);
-            if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-red-500 p-4">Could not load map data: ${error.message}. Ensure 'california-counties.geojson' is present and valid. Check console.</p>`;
+            const errorMsg = `Could not load map data: ${error.message}. Ensure 'california-counties.geojson' is present and valid. Check console.`;
+            if(mapContainer) mapContainer.innerHTML = `<p class="text-center text-red-500 p-4">${errorMsg}</p>`;
+            dataLoadError = errorMsg;
         }
     }
 
@@ -744,3 +762,84 @@
 
                 if (hasMonthData && !isNaN(year) && !isNaN(month) && month >= 1 && month <= 12) {
                     timeKey = `${year}-${String(month).padStart(2, '0')}`;
+                } else if (!isNaN(year)) {
+                    timeKey = String(year);
+                } else {
+                    return; // Skip items with invalid year or month
+                }
+
+                if (!casesByTimeKey[timeKey]) {
+                    casesByTimeKey[timeKey] = 0;
+                }
+                casesByTimeKey[timeKey] += (Number(item.Cases) || 0);
+            });
+
+            // Convert aggregated data to chart-friendly format (sorted by time)
+            const timeLabels = Object.keys(casesByTimeKey).sort((a, b) => {
+                if (hasMonthData) {
+                    // Compare year-month strings
+                    const dateA = a.split('-').map(Number);
+                    const dateB = b.split('-').map(Number);
+                    if (dateA[0] !== dateB[0]) return dateA[0] - dateB[0]; // Compare years
+                    return dateA[1] - dateB[1]; // Compare months
+                } else {
+                    // Compare years
+                    return parseInt(a) - parseInt(b);
+                }
+
+            });
+            const timeValues = timeLabels.map(key => casesByTimeKey[key]);
+
+            // Prepare chart data and options
+            const chartData = {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Cases',
+                    data: timeValues,
+                    fill: false,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: 'rgba(75, 192, 192, 1)',
+                    pointHoverBorderColor: '#fff',
+                    tension: 0.1 // Slight curve to the line
+                }]
+            };
+
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    title: { display: true, text: 'Cases Over Time' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: hasMonthData ? 'Year-Month' : 'Year' } },
+                    y: { title: { display: true, text: 'Number of Cases' }, beginAtZero: true, ticks: { callback: value => value.toLocaleString() } }
+                }
+            };
+            // Create the new line chart
+            lineChartInstance = new Chart(lineChartCanvas, {
+                type: 'line',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+
+        // --- RUN INITIALIZATION ON PAGE LOAD ---\
+        // This ensures the script runs after the full HTML document is parsed and ready.
+        document.addEventListener('DOMContentLoaded', initializeDashboard);
+
+    </script>
+</body>
+</html>
