@@ -162,6 +162,17 @@
     
         let masterData = []; 
 
+        // --- AGGREGATE IDENTIFIERS (GLOBAL) ---
+        // These MUST match exactly how they appear in your CSV data.
+        const AGGREGATE_SEX_VALUE = "Total";
+        // COMMON ASSUMPTION: "California" is often used in 'County' columns for statewide totals.
+        // Adjust this if your data uses a different identifier (e.g., "Statewide", "All CA").
+        const AGGREGATE_COUNTY_IDENTIFIER = "California";
+
+        // These will be set after masterData is loaded
+        let hasAggregateSexIdentifier = false;
+        let hasStatewideAggregateCountyIdentifier = false;
+
         // --- DOM ELEMENT REFERENCES ---
         const diseaseFilter = document.getElementById('disease-filter');
         const countyFilter = document.getElementById('county-filter');
@@ -199,6 +210,13 @@
     const csvData = await response.text();
     masterData = csvToJSON(csvData);
     
+                // After masterData is loaded, determine if aggregate identifiers exist
+                if (masterData.length > 0) {
+                    hasAggregateSexIdentifier = masterData.some(d => d.Sex === AGGREGATE_SEX_VALUE);
+                    hasStatewideAggregateCountyIdentifier = masterData.some(d => d.County === AGGREGATE_COUNTY_IDENTIFIER);
+                }
+
+
                 if (!response.ok) {
                     throw new Error(`Failed to fetch disease data: ${response.status} ${response.statusText}. Check file path and ensure it's hosted.`);
                 }
@@ -312,17 +330,6 @@
                 const selectedCounty = countyFilter.value;
                 const selectedYearStr = yearFilter.value; // Year from filter is a string
                 const selectedSex = sexFilter.value;
-
-                // Define known aggregate values that might be present in the data.
-                // These MUST match exactly how they appear in your CSV data.
-                const AGGREGATE_SEX_VALUE = "Total";
-                // COMMON ASSUMPTION: "California" is often used in 'County' columns for statewide totals.
-                // Adjust this if your data uses a different identifier (e.g., "Statewide", "All CA").
-                const AGGREGATE_COUNTY_IDENTIFIER = "California";
-
-                // Check if these aggregate identifiers exist in the masterData
-                const hasAggregateSexIdentifier = masterData.some(d => d.Sex === AGGREGATE_SEX_VALUE);
-                const hasStatewideAggregateCountyIdentifier = masterData.some(d => d.County === AGGREGATE_COUNTY_IDENTIFIER);
 
                 // Filter masterData based on current selections
                 const filteredData = masterData.filter(item => {
@@ -690,36 +697,47 @@
                     layer.bindTooltip(() => {
                         const selectedDisease = diseaseFilter.value;
                         let tooltipContent = `<b>${countyDisplayName}</b>`;
-                        
-                        if (masterData.length > 0 && countyValueForFiltering) {
-                            const currentFilters = { 
-                                year: yearFilter.value,
-                                sex: sexFilter.value
-                            };
 
-                            // Calculate total cases in this county, respecting other active filters
-                            const casesInCountyAllDiseases = masterData
-                                .filter(item => item.County === countyValueForFiltering &&
-                                               (currentFilters.year ? parseInt(item.Year) === parseInt(currentFilters.year) : true) &&
-                                               (currentFilters.sex ? item.Sex === currentFilters.sex : true)
-                                )
+                        if (masterData.length > 0 && countyValueForFiltering) {
+                            const currentSelectedYearStr = yearFilter.value;
+                            const currentSelectedSex = sexFilter.value; // Sex selected in the main filter
+
+                            // Start with data for the specific county of this map feature
+                            let countySpecificData = masterData.filter(item => item.County === countyValueForFiltering);
+
+                            // Apply year filter from main controls
+                            if (currentSelectedYearStr) {
+                                countySpecificData = countySpecificData.filter(item => parseInt(item.Year) === parseInt(currentSelectedYearStr));
+                            }
+
+                            // Apply sex filter logic, mirroring applyFilters and using global aggregate flags
+                            let sexFilteredDataForTooltip;
+                            if (currentSelectedSex) { // A specific sex is selected in the main filter
+                                sexFilteredDataForTooltip = countySpecificData.filter(item => item.Sex === currentSelectedSex);
+                            } else { // "All" sexes selected in the main filter
+                                if (hasAggregateSexIdentifier) { // Use global flag
+                                    // Filter this county's data for the aggregate sex value (e.g., "Total")
+                                    sexFilteredDataForTooltip = countySpecificData.filter(item => item.Sex === AGGREGATE_SEX_VALUE);
+                                } else {
+                                    // No global aggregate sex, so "All" means sum all available sex records for this county
+                                    sexFilteredDataForTooltip = countySpecificData;
+                                }
+                            }
+
+                            // Calculate total cases for this county with all active filters applied
+                            const casesInCountyAllDiseases = sexFilteredDataForTooltip
                                 .reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
-                            
                             tooltipContent += `<br>Total Cases (active filters): ${casesInCountyAllDiseases.toLocaleString()}`;
 
                             // If a specific disease is selected in the main filter, show its count too
                             if (selectedDisease) { 
-                                 const casesForSelectedDisease = masterData
-                                    .filter(item => item.County === countyValueForFiltering && 
-                                                   item.Disease === selectedDisease &&
-                                                   (currentFilters.year ? parseInt(item.Year) === parseInt(currentFilters.year) : true) &&
-                                                   (currentFilters.sex ? item.Sex === currentFilters.sex : true)
-                                    )
+                                 const casesForSelectedDisease = sexFilteredDataForTooltip // Start with already filtered data for year and sex
+                                    .filter(item => item.Disease === selectedDisease)
                                     .reduce((sum, item) => sum + (Number(item.Cases) || 0), 0);
                                 tooltipContent += `<br>${selectedDisease}: ${casesForSelectedDisease.toLocaleString()}`;
                             }
                         } else if (!countyValueForFiltering) {
-                            tooltipContent += "<br>County name missing in GeoJSON."
+                            tooltipContent += "<br>County name missing in GeoJSON.";
                         } else if (masterData.length === 0) {
                             tooltipContent += "<br>Disease data not loaded."
                         }
