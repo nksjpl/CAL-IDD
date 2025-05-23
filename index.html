@@ -313,15 +313,63 @@
                 const selectedYearStr = yearFilter.value; // Year from filter is a string
                 const selectedSex = sexFilter.value;
 
+                // Define known aggregate values that might be present in the data.
+                // These MUST match exactly how they appear in your CSV data.
+                const AGGREGATE_SEX_VALUE = "Total";
+                // COMMON ASSUMPTION: "California" is often used in 'County' columns for statewide totals.
+                // Adjust this if your data uses a different identifier (e.g., "Statewide", "All CA").
+                const AGGREGATE_COUNTY_IDENTIFIER = "California";
+
+                // Check if these aggregate identifiers exist in the masterData
+                const hasAggregateSexIdentifier = masterData.some(d => d.Sex === AGGREGATE_SEX_VALUE);
+                const hasStatewideAggregateCountyIdentifier = masterData.some(d => d.County === AGGREGATE_COUNTY_IDENTIFIER);
+
                 // Filter masterData based on current selections
                 const filteredData = masterData.filter(item => {
                     // Ensure item.Year is treated as a number for comparison
-                    const itemYear = parseInt(item.Year); 
-                    // If a filter is not set (empty string), it's considered a pass (true)
-                    return (selectedDisease ? item.Disease === selectedDisease : true) &&
-                           (selectedCounty ? item.County === selectedCounty : true) &&
-                           (selectedYearStr ? itemYear === parseInt(selectedYearStr) : true) && 
-                           (selectedSex ? item.Sex === selectedSex : true);
+                    const itemYear = parseInt(item.Year);
+
+                    // 1. Disease Filter
+                    const diseaseMatch = !selectedDisease || item.Disease === selectedDisease;
+                    if (!diseaseMatch) return false;
+
+                    // 2. Sex Filter
+                    let sexMatch;
+                    if (selectedSex) {
+                        // A specific sex is selected (e.g., "Male", "Female", or "Total" if it's an option)
+                        sexMatch = item.Sex === selectedSex;
+                    } else {
+                        // "All" sexes is selected (selectedSex is an empty string)
+                        if (hasAggregateSexIdentifier) {
+                            // If "All" sexes selected and an aggregate sex identifier (e.g., "Total") exists, use those rows.
+                            sexMatch = item.Sex === AGGREGATE_SEX_VALUE;
+                        } else {
+                            // Otherwise (no aggregate sex identifier), "All" means sum all available individual sex records.
+                            sexMatch = true;
+                        }
+                    }
+                    if (!sexMatch) return false;
+
+                    // 3. County Filter
+                    let countyMatch;
+                    if (selectedCounty) { // A specific county is selected from the dropdown
+                        countyMatch = item.County === selectedCounty;
+                    } else { // "All Counties" is selected (selectedCounty is an empty string)
+                        if (hasStatewideAggregateCountyIdentifier) {
+                            // If "All Counties" selected AND a statewide aggregate identifier exists, use those rows.
+                            countyMatch = item.County === AGGREGATE_COUNTY_IDENTIFIER;
+                        } else {
+                            // Otherwise, "All Counties" means include all actual counties (for summing, if no statewide total row).
+                            countyMatch = true;
+                        }
+                    }
+                    if (!countyMatch) return false;
+
+                    // 4. Year Filter (assuming 'Year' in data is numeric and "All Years" means sum across them)
+                    const yearMatch = !selectedYearStr || itemYear === parseInt(selectedYearStr);
+                    if (!yearMatch) return false;
+
+                    return true; // All conditions met
                 });
 
                 // Update all dashboard components with the filtered data
